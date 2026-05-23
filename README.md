@@ -128,7 +128,7 @@ LINDEF/
 │
 ├── data/
 │   └── README.md
-│   └── LINDEF_Simulation_Dashboard.mp4
+│   └── lindef_simulation_dashboard.mp4
 │
 ├── models/
 │   └── README.md
