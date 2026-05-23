@@ -1,17 +1,37 @@
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .ipynb_checkpoints/
 
+# Virtual environments
 .env
 venv/
 .venv/
+env/
 
+# Large datasets
 data/*.csv
 data/*.zip
+data/*.pcap
+data/*.pcapng
+data/cic_extracted/
 
+# Model artifacts
 *.pkl
 *.joblib
 *.npy
 
+# Generated live/demo files
+live_pcaps/
+live_csvs/
+attack_log.csv
+outputs/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# System files
 .DS_Store
 Thumbs.db
