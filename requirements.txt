@@ -1,0 +1,10 @@
+pandas
+numpy
+scikit-learn
+imbalanced-learn
+matplotlib
+seaborn
+psutil
+joblib
+streamlit
+streamlit-autorefresh
