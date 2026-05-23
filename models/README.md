@@ -1,8 +1,8 @@
 # Models
 
-Model artifacts are generated after running the training pipeline.
+Model artifacts are generated after running the training notebook.
 
-Expected outputs:
+Expected generated files:
 
 - `binary_model.pkl` — binary normal vs. attack classifier
 - `class_model.pkl` — multi-class attack type classifier
@@ -11,4 +11,10 @@ Expected outputs:
 - `feature_medians.npy` — median feature values
 - `labelEncoder.pkl` — label encoder artifact from the original workflow
 
-The model files are not included by default because they may be large.
+These files are not included in this repository because some model artifacts are larger than GitHub's normal browser upload limit.
+
+To generate the model artifacts, run:
+
+`notebooks/LINDEF_training_colab.ipynb`
+
+For local dashboard use, place the generated files in this folder.
