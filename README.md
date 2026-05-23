@@ -262,7 +262,7 @@ LINDEF/
     ├── methodology.md
     ├── limitations.md
     ├── future_work.md
-    └── LINDEF_Project_Poster.pdf
+    └── LINDEF_poster.pdf
 ```
 
 ---
