@@ -1,65 +1,157 @@
 # LINDEF: Lightweight Real-Time Network Intrusion Detection and Containment Framework
 
-LINDEF is a machine learning-based network intrusion detection framework designed to identify malicious network traffic while remaining lightweight enough for small businesses, schools, and organizations with limited cybersecurity resources. The system uses a two-stage detection pipeline: a binary classifier first determines whether traffic is benign or malicious, and an attack classification model then identifies the likely attack type.
+LINDEF is a machine learning-based network intrusion detection project designed to identify suspicious network traffic while staying lightweight enough for local environments, school networks, small businesses, and other organizations with limited cybersecurity resources.
 
-## Project Goal
+The system uses a two-stage classification pipeline:
 
-The goal of LINDEF is to develop an autonomous intrusion detection framework that is fast, lightweight, accessible, dynamic, and accurate. The system is designed to detect and classify network intrusion incidents without heavily affecting normal system performance.
+1. A **binary detection model** classifies traffic as benign or malicious.
+2. An **attack classification model** identifies the likely attack type when suspicious traffic is detected.
 
-## Why This Project Matters
+This repository contains the training code, Colab notebook, Streamlit dashboard, benchmark results, documentation, and simulation dashboard demo for the LINDEF project.
 
-Many organizations cannot afford expensive enterprise-level intrusion detection tools or cloud security platforms. As a result, they may be more vulnerable to attacks that can cause data loss, financial damage, operational disruption, and privacy risks. LINDEF explores whether a lightweight machine learning system can provide strong detection performance while using fewer resources than many traditional solutions.
+---
+
+## Project Overview
+
+Traditional intrusion detection systems can be expensive, difficult to maintain, resource-heavy, or dependent on constantly updated rules and signatures. LINDEF explores whether a lightweight machine learning system can provide strong intrusion detection performance while tracking practical deployment factors such as:
+
+- Accuracy
+- Precision
+- Recall
+- F1-score
+- False positive rate
+- Average latency
+- RAM usage
+- Model size
+
+The goal is not only to detect attacks accurately, but also to evaluate whether the system could realistically operate in lower-resource environments.
+
+---
+
+## Core Goals
+
+LINDEF was designed around three main goals:
+
+1. **Detect malicious traffic accurately**
+2. **Classify the type of attack when possible**
+3. **Remain lightweight enough for practical local use**
+
+The project also includes response mapping, where predicted attack types are assigned severity levels and recommended containment actions.
+
+---
 
 ## How LINDEF Works
 
-LINDEF follows a two-stage classification process:
+LINDEF uses a two-stage detection process.
 
-1. **Binary Classification Model**
-   - Classifies each network flow as either normal or attack traffic.
-   - This acts as the first detection layer.
+### 1. Binary Detection Model
 
-2. **Attack Classification Model**
-   - Runs after suspicious traffic is detected.
-   - Predicts the likely attack type so the system can recommend an appropriate response.
+The binary model classifies each network flow as:
 
-The live detection pipeline is designed to capture traffic, extract flow features using CICFlowMeter, align the extracted features to the training feature list, scale the data, and classify the traffic using the trained models.
+```text
+BENIGN
+ATTACK
+```
+
+This model acts as the first detection layer. If traffic is classified as benign, the system allows it. If traffic is classified as suspicious, it is passed into the attack classification model.
+
+### 2. Attack Classification Model
+
+The attack classification model predicts the likely attack type for malicious traffic. Example attack labels include:
+
+```text
+neptune
+smurf
+nmap
+portsweep
+ipsweep
+guess_passwd
+httptunnel
+warezmaster
+apache2
+```
+
+The predicted attack type is then mapped to a severity level and a recommended response.
+
+Example response mapping:
+
+| Attack Category | Example Attacks | Example Response |
+|---|---|---|
+| DoS-style attacks | `neptune`, `smurf`, `apache2` | `BLOCK_IP` |
+| Scanning/probe attacks | `nmap`, `portsweep`, `ipsweep` | `BLOCK_IP` |
+| Credential/access attempts | `guess_passwd`, `warezmaster` | `THROTTLE_IP` |
+| Tunneling or host compromise | `httptunnel`, `rootkit` | `ISOLATE_HOST` |
+| Normal traffic | `normal`, `benign` | `ALLOW` |
+
+---
 
 ## Datasets Used
 
-LINDEF combines multiple public intrusion detection datasets to improve attack coverage and reduce overfitting to one dataset format.
+LINDEF combines multiple public intrusion detection datasets to improve attack coverage and reduce overfitting to a single dataset.
 
 | Dataset | Description |
 |---|---|
-| NSL-KDD | Benchmark intrusion detection dataset with normal traffic and multiple attack categories. |
-| UNSW-NB15 | Modern intrusion detection dataset with normal traffic and multiple attack categories. |
-| CIC-IDS | Flow-based intrusion detection dataset with benign traffic and multiple attack types. |
+| **NSL-KDD** | Benchmark intrusion detection dataset containing normal traffic and multiple attack categories |
+| **UNSW-NB15** | Modern intrusion detection dataset containing normal traffic and nine attack categories |
+| **CIC-IDS** | Flow-based intrusion detection dataset containing benign traffic and multiple attack types |
 
-Combining these datasets provides broader attack coverage, a larger training set, and a more diverse feature space.
+Combining these datasets provides broader attack coverage, more training records, and a more diverse feature space.
 
-## Model Training
+---
 
-The training pipeline includes:
+## Training Pipeline
 
-- Loading NSL-KDD, UNSW-NB15, and CIC-IDS data
-- Cleaning missing, infinite, and duplicate values
-- Removing leakage-prone columns such as IP addresses, timestamps, and flow identifiers
-- Creating binary and multi-class labels
-- Encoding categorical features
-- Scaling features with `StandardScaler`
-- Applying SMOTE to reduce class imbalance
-- Training Random Forest classifiers
-- Saving model artifacts for inference and dashboard use
+The training pipeline performs the following steps:
+
+1. Loads NSL-KDD, UNSW-NB15, and CIC-IDS data
+2. Combines all datasets into one training set
+3. Removes invalid, missing, infinite, and duplicate values
+4. Drops leakage-prone columns such as IP addresses, timestamps, and flow identifiers
+5. Creates binary and multi-class labels
+6. Encodes categorical features
+7. Adds a packet-rate feature when flow columns are available
+8. Scales features using `StandardScaler`
+9. Applies SMOTE to reduce class imbalance
+10. Trains Random Forest models
+11. Evaluates detection and classification performance
+12. Saves model artifacts for dashboard inference
+
+---
+
+## Models
+
+LINDEF trains two Random Forest classifiers:
+
+| Model | Purpose |
+|---|---|
+| **Binary Random Forest Model** | Detects whether traffic is normal or malicious |
+| **Attack Classification Random Forest Model** | Classifies the likely attack type after traffic is flagged as malicious |
+
+Generated model artifacts include:
+
+```text
+binary_model.pkl
+class_model.pkl
+scaler.pkl
+feature_columns.pkl
+feature_medians.npy
+labelEncoder.pkl
+```
+
+These artifacts are not included in the repository by default because some model files may be too large for normal GitHub upload. They can be regenerated by running the training notebook.
+
+---
 
 ## Results
 
-LINDEF produced strong results in both binary detection and attack classification.
+LINDEF produced strong performance in both binary detection and attack classification.
 
 | Model | Accuracy | Precision | Recall | F1-score |
 |---|---:|---:|---:|---:|
 | Binary Classification Model | 0.9983 | 0.9983 | 0.9983 | 0.9983 |
 | Attack Classification Model | 0.9415 | 0.9416 | 0.9415 | 0.9415 |
 
-Additional reported performance metrics:
+Additional performance metrics:
 
 | Metric | Binary Model | Attack Classification Model |
 |---|---:|---:|
@@ -68,46 +160,68 @@ Additional reported performance metrics:
 | RAM Usage | 18.52 MB | 8.32 MB |
 | ROC-AUC | 0.97 | 0.89 |
 
+The binary model performed especially strongly, while the attack classification model showed strong multi-class performance across a broader set of attack labels.
+
+---
+
 ## Benchmark Comparison
 
-LINDEF was compared against common intrusion detection approaches, including signature-based IDS, anomaly-based IDS, cloud-based endpoint detection, and rule-based IDS. The benchmark comparison includes project-generated LINDEF results and literature-based ranges for alternative IDS approaches.
+LINDEF was compared against common intrusion detection approaches. The LINDEF metrics come from project testing, while the non-LINDEF values are literature-based comparison ranges summarized for context.
 
-| Method | Detection Accuracy | False Positive Rate | Average Latency | RAM Usage |
-|---|---:|---:|---:|---:|
-| LINDEF Binary Model | 99.83% | 0.21% | 54.18 ms | 18.52 MB |
-| LINDEF Attack Classification Model | 94.15% | 0.37% | 53.79 ms | 8.32 MB |
-| Signature-Based IDS | 94%–98% | <1% | <5 ms | 50–200 MB |
-| Anomaly-Based IDS | 85%–95% | 3%–5% | 10–50 ms | 1–4 GB |
-| Cloud-Based Endpoint Detection | 96%–99% | 2% | 50–200 ms | Varies |
-| Rule-Based IDS | 90%–95% | 1%–2% | 5–15 ms | 200–500 MB |
+| Method | Detection Task | Accuracy | False Positive Rate | Average Latency | RAM Usage |
+|---|---|---:|---:|---:|---:|
+| LINDEF Binary Random Forest | Normal vs. attack detection | 99.83% | 0.21% | 54.18 ms | 18.52 MB |
+| LINDEF Attack Classification Random Forest | Attack type classification | 94.15% | 0.37% | 53.79 ms | 8.32 MB |
+| Signature-Based IDS | Known attack pattern matching | 94%–98% | <1% | <5 ms | 50–200 MB |
+| Anomaly-Based IDS | Detects deviations from normal behavior | 85%–95% | 3%–5% | 10–50 ms | 1–4 GB |
+| Cloud-Based Endpoint Detection | Endpoint and device monitoring | 96%–99% | 2% | 50–200 ms | Varies |
+| Rule-Based IDS | Manually written detection rules | 90%–95% | 1%–2% | 5–15 ms | 200–500 MB |
 
-While LINDEF has slightly higher latency than some traditional IDS approaches, it provides strong accuracy, low false positive rates, and low RAM usage. The latency tradeoff is acceptable for the intended use case of lightweight monitoring in smaller or moderate-traffic environments.
+LINDEF shows a strong balance of high accuracy, low false positive rate, and low RAM usage. Its latency is higher than some traditional IDS approaches, but the tradeoff is reasonable for the intended use case of lightweight monitoring in smaller or moderate-traffic environments.
 
-## Live Dashboard
+---
 
-The project includes a Streamlit dashboard for simulation and live detection testing.
+## Simulation Dashboard Demo
 
-The dashboard can:
+This repository includes a screen-recorded dashboard demo named:
 
-- Load trained LINDEF models
-- Process simulation CSV data
-- Support live traffic processing through TShark and CICFlowMeter
-- Align extracted features to the trained feature list
-- Classify traffic as benign or malicious
-- Predict attack type
-- Display severity and recommended response actions
-- Log recent detections
-- Visualize attack vs. benign traffic and severity distribution
+```text
+lindef_simulation_dashboard
+```
 
-Example response actions include:
+The demo shows the Streamlit dashboard processing sample flow data generated from the training/testing pipeline. It demonstrates the detection pipeline without requiring a full live packet capture setup.
 
-| Attack Type | Example Response |
-|---|---|
-| DoS-style attacks | `BLOCK_IP` |
-| Scanning/probe attacks | `BLOCK_IP` |
-| Credential/access attempts | `THROTTLE_IP` |
-| Tunneling or host compromise attacks | `ISOLATE_HOST` |
-| Normal traffic | `ALLOW` |
+The demo shows LINDEF:
+
+- Loading trained model artifacts
+- Processing sample flow-style records
+- Aligning data to the expected training features
+- Scaling input features
+- Classifying traffic as benign or malicious
+- Predicting attack types
+- Assigning severity levels
+- Recommending response actions
+- Logging recent detections
+- Displaying dashboard charts
+
+This demo should be interpreted as a **simulation dashboard demo using sample flow data**, not as a fully deployed live-network environment.
+
+The dashboard is designed to support a future live workflow using:
+
+```text
+TShark packet capture
+CICFlowMeter feature extraction
+LINDEF model inference
+Streamlit visualization
+```
+
+If the demo video is included in this repository, it should be placed in:
+
+```text
+demo/lindef_simulation_dashboard.mp4
+```
+
+---
 
 ## Repository Structure
 
@@ -128,7 +242,6 @@ LINDEF/
 │
 ├── data/
 │   └── README.md
-│   └── lindef_simulation_dashboard.mp4
 │
 ├── models/
 │   └── README.md
@@ -141,11 +254,18 @@ LINDEF/
 │   ├── binary_roc.png
 │   └── multiclass_roc.png
 │
+├── demo/
+│   ├── README.md
+│   └── lindef_simulation_dashboard.mp4
+│
 └── docs/
     ├── methodology.md
     ├── limitations.md
-    └── future_work.md
+    ├── future_work.md
+    └── LINDEF_Project_Poster.pdf
 ```
+
+---
 
 ## Installation
 
@@ -162,15 +282,17 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
+---
+
 ## Training the Models
 
-The easiest way to train the models is to run the Colab notebook:
+The easiest way to train the models is through the Colab notebook:
 
 ```text
 notebooks/LINDEF_training_colab.ipynb
 ```
 
-The notebook generates the following artifacts:
+The notebook generates:
 
 ```text
 binary_model.pkl
@@ -185,17 +307,21 @@ binary_roc.png
 multiclass_roc.png
 ```
 
-Model artifacts are not included in this repository by default because some files may be too large for normal GitHub upload. To use the dashboard locally, place the generated model files inside the `models/` folder.
+The generated model files should be placed locally in:
+
+```text
+models/
+```
+
+Model files are not included by default because some artifacts may be too large for normal GitHub upload.
+
+---
 
 ## Running the Dashboard
 
-After training the models and placing the artifacts in `models/`, run:
+After generating the model artifacts, place them locally in the `models/` folder.
 
-```bash
-streamlit run app/dashboard.py
-```
-
-Expected local model files:
+Expected local files:
 
 ```text
 models/binary_model.pkl
@@ -205,25 +331,82 @@ models/feature_columns.pkl
 models/feature_medians.npy
 ```
 
+Then run:
+
+```bash
+streamlit run app/dashboard.py
+```
+
+The dashboard can run in simulation mode using sample flow data. A future version will expand live capture support using TShark and CICFlowMeter.
+
+---
+
+## Data Availability
+
+The full datasets are not included in this repository because of file size and licensing constraints.
+
+The training pipeline expects the following files:
+
+```text
+NSL-KDD(training) - KDDTrain+.csv
+NSL-KDD(testing) - KDDTest+.csv
+UNSW-NB15 (training) - UNSW_NB15_training-set (1).csv
+UNSW-NB15 (testing) - UNSW_NB15_testing-set (1).csv
+CIC-IDS CSV files or CIC-IDS zip file
+```
+
+More details are provided in:
+
+```text
+data/README.md
+```
+
+---
+
+## Project Poster
+
+A general project poster summarizing the background, methodology, results, benchmark comparison, limitations, and future work is included in:
+
+```text
+docs/LINDEF_Project_Poster.pdf
+```
+
+This poster is included as a general LINDEF project summary, not only as a competition-specific poster.
+
+---
+
 ## Limitations
 
-- Public datasets may not fully represent real-world enterprise traffic.
+LINDEF has several limitations that should be considered before real-world deployment:
+
+- Public IDS datasets may not fully represent live enterprise traffic.
 - CICFlowMeter does not directly recreate every NSL-KDD or UNSW-NB15 feature from raw packet captures.
-- Live performance depends on feature extraction quality.
+- Live detection accuracy depends on how closely extracted features match the training feature space.
 - Some attack classes have fewer samples than others.
-- The system may struggle with zero-day attacks that differ significantly from the training data.
-- Benchmark comparisons for non-LINDEF systems are literature-based ranges, not all direct same-hardware tests.
+- SMOTE helps class imbalance but does not fully replace real examples of rare attacks.
+- The current dashboard demo uses sample data rather than a fully deployed live network environment.
+- Benchmark values for non-LINDEF methods are literature-based comparison ranges, not direct same-hardware tests.
+- The model may struggle with zero-day attacks or adversarial traffic designed to evade detection.
+- Additional testing is needed in higher-bandwidth and larger network environments.
+
+---
 
 ## Future Work
 
-- Improve live feature extraction consistency.
-- Test LINDEF on larger and higher-bandwidth networks.
-- Add ensemble models for stronger classification.
-- Tune thresholds to reduce false positives.
-- Add explainability tools such as feature importance or SHAP.
-- Expand containment logic by attack type and confidence score.
-- Add Docker support for easier deployment.
-- Directly benchmark LINDEF against Snort, Suricata, Zeek, and endpoint detection tools on the same hardware.
+Future improvements include:
+
+- Improving live feature extraction with CICFlowMeter or NFStream
+- Testing LINDEF on larger and higher-bandwidth networks
+- Expanding training data with newer intrusion detection datasets
+- Adding ensemble models such as Random Forest plus XGBoost or LightGBM
+- Tuning probability thresholds to reduce false positives
+- Adding explainability tools such as feature importance or SHAP
+- Improving containment actions based on attack type, confidence, and repeated behavior
+- Adding Docker support for easier setup
+- Directly benchmarking LINDEF against Snort, Suricata, Zeek, and endpoint detection tools on the same hardware
+- Improving the Streamlit dashboard for more reliable live monitoring
+
+---
 
 ## Tools and Libraries
 
@@ -239,12 +422,16 @@ LINDEF uses:
 - Joblib
 - psutil
 - Streamlit
-- CICFlowMeter
 - TShark/Wireshark
+- CICFlowMeter
+
+---
 
 ## Project Status
 
-LINDEF is a research and prototype system. It demonstrates that a lightweight machine learning approach can achieve strong intrusion detection performance while maintaining low memory usage. Further testing is needed before deployment in high-bandwidth or enterprise environments.
+LINDEF is a research prototype and science fair project. It demonstrates that a lightweight machine learning pipeline can achieve strong intrusion detection results while maintaining relatively low memory usage. Additional live-network testing is needed before real-world deployment.
+
+---
 
 ## Author
 
