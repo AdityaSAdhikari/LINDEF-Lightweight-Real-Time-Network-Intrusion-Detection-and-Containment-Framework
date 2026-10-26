@@ -8,3 +8,5 @@ psutil
 joblib
 streamlit
 streamlit-autorefresh
+segno
+pywebview
