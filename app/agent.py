@@ -272,7 +272,7 @@ class Monitor:
         if end <= len(raw_df):
             batch_df = raw_df.iloc[start:end]
         else:
-            # Wrap around to keep the demo running.
+            # Wrap around to keep the simulation running.
             batch_df = pd.concat([raw_df.iloc[start:], raw_df.iloc[: end % len(raw_df)]], ignore_index=True)
         self.simulated_addresses = not has_address_columns(raw_df)
         if self.simulated_addresses:
@@ -349,7 +349,7 @@ class Monitor:
         self.running = False
 
     def clear(self, by: str):
-        """Empty the detection log and lift all simulated containment (a fresh demo)."""
+        """Empty the detection log and lift all simulated containment (a fresh start)."""
         with self.lock:
             self.logs = []
             self.simulation_idx = 0
