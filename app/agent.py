@@ -77,11 +77,13 @@ NOTIFY_SEVERITIES = {"HIGH", "CRITICAL", "UNKNOWN"}  # uncontained attacks worth
 
 # Simulation CSVs (like simulation_test.csv) carry no addresses. In simulation
 # mode the agent assigns them after classification, from reserved ranges only:
-# attacks come from a dozen recurring attackers (RFC 5737 documentation ranges),
-# benign traffic from thousands of clients (198.18.0.0/15, RFC 2544), and both
-# go to defended hosts in 10.0.0.0/24. Addresses are keyed by row number, so a
-# row keeps its address when the CSV wraps around.
-SIM_ATTACKERS = [f"203.0.113.{n}" for n in (7, 19, 23, 42, 58, 77, 91)] + [f"198.51.100.{n}" for n in (4, 13, 66, 120, 201)]
+# attacks come from the RFC 5737 documentation ranges, benign traffic from
+# thousands of clients (198.18.0.0/15, RFC 2544), and both go to defended hosts
+# in 10.0.0.0/24. Neighbouring rows share an attacker (a burst comes from one or
+# two sources), and every pass through the CSV brings new attackers, so blocks
+# expire and new ones start the way they would on a real network.
+SIM_ATTACKERS = [f"203.0.113.{n}" for n in range(1, 255)] + [f"198.51.100.{n}" for n in range(1, 255)]
+SIM_ATTACKER_ROWS = 50  # rows in a row that share one attacker
 SIM_HOSTS = [f"10.0.0.{n}" for n in range(5, 125, 5)]
 SIM_PORTS = [443, 80, 22, 21, 25, 3389, 445, 3306]
 
@@ -92,11 +94,13 @@ def has_address_columns(df: pd.DataFrame) -> bool:
 
 
 def add_simulated_addresses(rows: list, positions: list):
-    """Give classified simulation rows stable made-up addresses (see SIM_ATTACKERS)."""
+    """Give classified simulation rows made-up addresses (see SIM_ATTACKERS).
+    positions count rows since monitoring started, across passes through the CSV."""
     for row, position in zip(rows, positions):
         mix = (int(position) * 2654435761) % 2**32  # scatter neighbouring rows
         if row["Status"] == "ATTACK":
-            row["Source IP"] = SIM_ATTACKERS[(mix >> 3) % len(SIM_ATTACKERS)]
+            group = ((int(position) // SIM_ATTACKER_ROWS) * 2654435761) % 2**32
+            row["Source IP"] = SIM_ATTACKERS[(group >> 5) % len(SIM_ATTACKERS)]
         else:
             row["Source IP"] = f"198.{18 + (mix >> 24) % 2}.{(mix >> 8) % 256}.{mix % 254 + 1}"
         row["Source Port"] = str(49152 + (mix >> 12) % 16000)
@@ -211,7 +215,8 @@ class Monitor:
                          "capture_duration": 5, **sources}
         self.sim_cache = (None, None, None)  # (path, mtime, DataFrame)
         self.simulated_addresses = False
-        self.sim_positions = None  # CSV row numbers of the current batch, when addresses are simulated
+        self.sim_positions = None  # row counts of the current batch, when addresses are simulated
+        self.sim_rows_sent = 0     # simulation rows sent since the last Clear Logs (keeps growing past the CSV)
         self.containment = Containment()
         self.notifications = []
         self.next_note_id = 1
@@ -274,7 +279,8 @@ class Monitor:
             batch_df = pd.concat([raw_df.iloc[start:], raw_df.iloc[: end % len(raw_df)]], ignore_index=True)
         self.simulated_addresses = not has_address_columns(raw_df)
         if self.simulated_addresses:
-            self.sim_positions = [(start + i) % len(raw_df) for i in range(len(batch_df))]
+            self.sim_positions = [self.sim_rows_sent + i for i in range(len(batch_df))]
+            self.sim_rows_sent += len(batch_df)
 
         with self.lock:
             if epoch == self.epoch:
@@ -370,6 +376,7 @@ class Monitor:
             self.logs = []
             self.counts = self.empty_counts()
             self.simulation_idx = 0
+            self.sim_rows_sent = 0
             self.epoch += 1
             self.containment.lift_all(by, time.time())
         engine.LOG_FILE.unlink(missing_ok=True)
