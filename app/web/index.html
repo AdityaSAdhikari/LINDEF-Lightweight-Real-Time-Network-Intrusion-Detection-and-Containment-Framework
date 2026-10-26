@@ -308,15 +308,15 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
 <div class="page">
   <div class="masthead">
     <h1 class="wordmark">LINDEF</h1>
-    <span class="subtitle">Lightweight network intrusion detection and containment</span>
+    <span class="subtitle">Lightweight Network Intrusion Detection and Containment</span>
     <span class="spacer"></span>
     <span class="server-line" id="serverLine" hidden><span class="dot" id="serverDot"></span><span id="serverText"></span></span>
-    <button class="btn quiet small" id="themeBtn" type="button">Dark mode</button>
+    <button class="btn quiet small" id="themeBtn" type="button">Dark Mode</button>
   </div>
 
   <!-- Not paired yet -->
   <section class="pairing" id="pairScreen" hidden>
-    <h2>Connect to the server LINDEF protects</h2>
+    <h2>Connect to the Server LINDEF Protects</h2>
     <p>The LINDEF agent runs on that server. This computer pairs with it once, then reconnects on its own.</p>
     <ol>
       <li>On the server, start the agent: <code>python app/agent.py</code></li>
@@ -325,15 +325,15 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
     </ol>
     <form id="pairForm">
       <div class="field">
-        <label for="pairCode">Pairing code</label>
+        <label for="pairCode">Pairing Code</label>
         <textarea id="pairCode" rows="3" required spellcheck="false" autocomplete="off" placeholder="lindef://"></textarea>
       </div>
       <div class="field">
-        <label for="pairName">Name for this computer</label>
+        <label for="pairName">Name for This Computer</label>
         <input type="text" id="pairName" maxlength="80" placeholder="Front office desktop">
         <span class="hint">Shown in the list of paired devices.</span>
       </div>
-      <button class="btn primary" type="submit" id="pairBtn">Pair with server</button>
+      <button class="btn primary" type="submit" id="pairBtn">Pair with Server</button>
       <div class="form-error" id="pairError" role="alert"></div>
     </form>
   </section>
@@ -342,18 +342,18 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
   <main id="dash" hidden>
     <section class="verdict" id="verdict" aria-live="polite">
       <div>
-        <h2 id="verdictTitle">Connecting to the server</h2>
+        <h2 id="verdictTitle">Connecting to the Server</h2>
         <p id="verdictText"></p>
       </div>
       <div class="actions">
         <button class="btn primary" id="startBtn" type="button">Start</button>
         <button class="btn" id="stopBtn" type="button">Stop</button>
-        <button class="btn quiet" id="clearBtn" type="button">Clear logs</button>
+        <button class="btn quiet" id="clearBtn" type="button">Clear Logs</button>
       </div>
     </section>
 
-    <section class="threats" aria-label="Threats at hand">
-      <h3>Threats at hand</h3>
+    <section class="threats" aria-label="Threats at Hand">
+      <h3>Threats at Hand</h3>
       <div>
         <ol id="threatList"></ol>
         <p class="muted small" id="threatEmpty" style="margin:2px 0 0">No attacks in the latest flows.</p>
@@ -361,11 +361,11 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
     </section>
 
     <div class="metrics">
-      <div class="metric"><div class="value" id="mTotal">0</div><div class="label">Flows checked</div></div>
-      <div class="metric"><div class="value" id="mAttacks">0</div><div class="label">Detected attacks</div></div>
-      <div class="metric"><div class="value" id="mBenign">0</div><div class="label">Benign flows</div></div>
-      <div class="metric"><div class="value" id="mStopped">0</div><div class="label">Flows stopped (simulated)</div></div>
-      <div class="metric"><div class="value" id="mLatest">Waiting</div><div class="label">Latest status</div></div>
+      <div class="metric"><div class="value" id="mTotal">0</div><div class="label">Flows Checked</div></div>
+      <div class="metric"><div class="value" id="mAttacks">0</div><div class="label">Detected Attacks</div></div>
+      <div class="metric"><div class="value" id="mBenign">0</div><div class="label">Benign Flows</div></div>
+      <div class="metric"><div class="value" id="mStopped">0</div><div class="label">Flows Stopped (Simulated)</div></div>
+      <div class="metric"><div class="value" id="mLatest">Waiting</div><div class="label">Latest Status</div></div>
     </div>
 
     <div class="banner" id="errorBanner" role="alert" hidden></div>
@@ -387,12 +387,12 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
         </section>
 
         <section class="section t-green">
-          <header><h3>Recent detections</h3><span class="aside">Latest 50, newest first</span></header>
+          <header><h3>Recent Detections</h3><span class="aside">Latest 50, newest first</span></header>
           <div class="body flush">
             <p class="empty" id="detectEmpty">No traffic checked yet. Press Start to begin.</p>
             <div class="table-wrap scroll" id="detectWrap" hidden>
               <table>
-                <thead><tr><th>Time</th><th>Result</th><th>Severity</th><th>Source</th><th>Destination</th><th class="num">Attack probability</th><th>Response</th><th>Contained</th></tr></thead>
+                <thead><tr><th>Time</th><th>Result</th><th>Severity</th><th>Source</th><th>Destination</th><th class="num">Attack Probability</th><th>Response</th><th>Contained</th></tr></thead>
                 <tbody id="detectRows"></tbody>
               </table>
             </div>
@@ -408,7 +408,7 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
             <ul class="alerts" id="alertList"></ul>
           </div>
           <footer>
-            <label class="check"><input type="checkbox" id="prefSystem"> Show alerts as system notifications</label>
+            <label class="check"><input type="checkbox" id="prefSystem"> Show Alerts as System Notifications</label>
             <label class="check small">From
               <select id="prefSeverity" style="width:auto">
                 <option value="LOW">Low</option><option value="MEDIUM">Medium</option>
@@ -421,26 +421,26 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
           <header><h3>Monitoring</h3></header>
           <div class="body">
             <div class="field">
-              <span class="label">Traffic source</span>
-              <div class="segmented" role="group" aria-label="Traffic source">
+              <span class="label">Traffic Source</span>
+              <div class="segmented" role="group" aria-label="Traffic Source">
                 <button type="button" id="modeSim" aria-pressed="true">Simulation</button>
-                <button type="button" id="modeLive" aria-pressed="false">Live capture</button>
+                <button type="button" id="modeLive" aria-pressed="false">Live Capture</button>
               </div>
             </div>
             <div class="field">
-              <label for="refresh">Check every</label>
+              <label for="refresh">Check Every</label>
               <div class="range-row"><input type="range" id="refresh" min="0.5" max="10" step="0.5"><output id="refreshOut"></output></div>
             </div>
             <div class="field">
-              <label for="rows">Flows per check (simulation)</label>
+              <label for="rows">Flows per Check (Simulation)</label>
               <div class="range-row"><input type="range" id="rows" min="1" max="100" step="1"><output id="rowsOut"></output></div>
             </div>
             <div class="field">
-              <label for="capture">Capture length (live)</label>
+              <label for="capture">Capture Length (Live)</label>
               <div class="range-row"><input type="range" id="capture" min="2" max="20" step="1"><output id="captureOut"></output></div>
             </div>
             <div class="field">
-              <span class="label">Set on the server</span>
+              <span class="label">Set on the Server</span>
               <dl class="kv" id="sourceKv"></dl>
               <span class="hint">Commands and paths run on the server, so they are set there with agent flags, never over the network.</span>
             </div>
@@ -451,8 +451,8 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
           <header><h3>Devices</h3><span class="aside" id="devicesAside"></span></header>
           <div class="body flush"><ul class="devices" id="deviceList"></ul></div>
           <footer>
-            <button class="btn primary small" id="pairPhoneBtn" type="button">Pair a phone</button>
-            <button class="btn quiet small" id="unpairBtn" type="button">Unpair this computer</button>
+            <button class="btn primary small" id="pairPhoneBtn" type="button">Pair a Phone</button>
+            <button class="btn quiet small" id="unpairBtn" type="button">Unpair This Computer</button>
           </footer>
         </section>
       </div>
@@ -461,23 +461,23 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
     <section class="section t-lavender" style="margin-top:28px">
       <header><h3>Distributions</h3><span class="aside">Since logs were last cleared</span></header>
       <div class="dists">
-        <div class="dist"><h4>Attack and benign</h4><div id="distStatus"></div></div>
+        <div class="dist"><h4>Attack and Benign</h4><div id="distStatus"></div></div>
         <div class="dist"><h4>Severity</h4><div id="distSeverity"></div></div>
-        <div class="dist"><h4>Attack types</h4><div id="distAttacks"></div></div>
-        <div class="dist"><h4>Recommended responses</h4><div id="distResponses"></div></div>
+        <div class="dist"><h4>Attack Types</h4><div id="distAttacks"></div></div>
+        <div class="dist"><h4>Recommended Responses</h4><div id="distResponses"></div></div>
       </div>
     </section>
 
     <div class="bottom-row">
-      <button class="btn" id="downloadBtn" type="button">Download detection log</button>
+      <button class="btn" id="downloadBtn" type="button">Download Detection Log</button>
       <span class="muted small" id="downloadNote"></span>
     </div>
 
     <details class="model section" id="modelDetails" style="margin-top:20px">
-      <summary>Model and feature details</summary>
+      <summary>Model and Feature Details</summary>
       <div class="body">
         <dl class="kv" id="modelKv"></dl>
-        <label class="check small" style="margin-top:12px"><input type="checkbox" id="showFeatures"> Show expected feature columns</label>
+        <label class="check small" style="margin-top:12px"><input type="checkbox" id="showFeatures"> Show Expected Feature Columns</label>
         <ol class="features" id="featureList" hidden></ol>
       </div>
     </details>
@@ -485,7 +485,7 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
 </div>
 
 <dialog id="phoneDialog" aria-labelledby="phoneDialogTitle">
-  <header><h3 id="phoneDialogTitle">Pair a phone</h3></header>
+  <header><h3 id="phoneDialogTitle">Pair a Phone</h3></header>
   <div class="body">
     <div class="qr"><img id="phoneQr" alt="Pairing QR code for the LINDEF phone app"></div>
     <p style="margin:14px 0 0">Open the LINDEF app on the phone and scan this code. It works once.</p>
@@ -493,7 +493,7 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
     <div class="code" id="phoneCode"></div>
   </div>
   <footer>
-    <button class="btn quiet" id="copyCodeBtn" type="button">Copy code</button>
+    <button class="btn quiet" id="copyCodeBtn" type="button">Copy Code</button>
     <button class="btn primary" id="closeDialogBtn" type="button">Done</button>
   </footer>
 </dialog>
@@ -514,7 +514,7 @@ try { token = token || sessionStorage.getItem("lindef-token"); } catch (e) {}
 const themeBtn = document.getElementById("themeBtn");
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
-  themeBtn.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+  themeBtn.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
 }
 let savedTheme = "light";
 try { savedTheme = localStorage.getItem("lindef-theme") || "light"; } catch (e) {}
@@ -663,7 +663,7 @@ async function refresh() {
 
 function renderOffline(message) {
   $("verdict").classList.remove("alarm");
-  $("verdictTitle").textContent = "Can't reach the LINDEF server";
+  $("verdictTitle").textContent = "Can't Reach the LINDEF Server";
   $("verdictText").textContent = message;
   setControlsEnabled(false);
 }
@@ -687,26 +687,26 @@ function render() {
   const source = s.settings.mode === "live" ? `live traffic on ${s.settings.interface_id}` : "the simulation file";
   let title, text;
   if (!s.models.loaded) {
-    title = "Detection is off on the server";
+    title = "Detection Is Off on the Server";
     text = "The model files are missing there. Add them to the server's models folder, then restart the agent.";
   } else if (s.error) {
-    title = "Detection stopped working";
+    title = "Detection Stopped Working";
     text = s.error.split("\n")[0];
     verdict.classList.add("alarm");
   } else if (!s.running && m.total === 0) {
-    title = `Ready to monitor ${host}`;
+    title = `Ready to Monitor ${host}`;
     text = `Press Start to begin checking ${source}.`;
   } else {
     const summary = `${plural(m.attacks, "attack")} in ${plural(m.total, "flow")}. ` +
       `${plural(m.contained, "flow")} stopped by simulated containment.`;
     if (!s.running) {
-      title = "Monitoring is stopped";
+      title = "Monitoring Is Stopped";
       text = summary;
     } else if (box.active.length) {
-      title = `${plural(box.active.length, "threat")} contained`;
+      title = `${plural(box.active.length, "Threat")} Contained`;
       text = `Simulated: no real traffic was changed. ${summary}`;
     } else {
-      title = "Traffic looks normal";
+      title = "Traffic Looks Normal";
       text = `${summary} Checking every ${s.settings.refresh_seconds} seconds.`;
     }
   }
@@ -819,7 +819,7 @@ function renderSettings(st) {
   }
   const items = st.mode === "live"
     ? [["TShark", st.tshark_path], ["Interface", st.interface_id], ["CICFlowMeter", st.cicflowmeter_command]]
-    : [["Simulation file", st.simulation_csv]];
+    : [["Simulation File", st.simulation_csv]];
   $("sourceKv").replaceChildren(...items.flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })]));
 }
 
@@ -920,10 +920,10 @@ $("closeDialogBtn").addEventListener("click", () => { $("phoneDialog").close(); 
 $("copyCodeBtn").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText($("phoneCode").textContent); $("copyCodeBtn").textContent = "Copied"; }
   catch (e) { $("copyCodeBtn").textContent = "Copy failed"; }
-  setTimeout(() => { $("copyCodeBtn").textContent = "Copy code"; }, 1500);
+  setTimeout(() => { $("copyCodeBtn").textContent = "Copy Code"; }, 1500);
 });
 $("unpairBtn").addEventListener("click", async () => {
-  if (!confirm("Unpair this computer from the server? You will need a new desktop pairing code from the agent.")) return;
+  if (!confirm("Unpair This Computer from the server? You will need a new desktop pairing code from the agent.")) return;
   try { await api("/api/connection", { method: "DELETE" }); showPairing(); } catch (e) { alert(e.message); }
 });
 
@@ -943,8 +943,8 @@ $("modelDetails").addEventListener("toggle", async () => {
   try {
     const info = await api("/api/model");
     $("modelKv").replaceChildren(...[
-      ["Binary model", info.binary_model], ["Attack model", info.multi_model], ["Scaler", info.scaler],
-      ["Expected features", String(info.feature_count)], ["Feature medians loaded", info.medians_loaded ? "Yes" : "No"],
+      ["Binary Model", info.binary_model], ["Attack Model", info.multi_model], ["Scaler", info.scaler],
+      ["Expected Features", String(info.feature_count)], ["Feature Medians Loaded", info.medians_loaded ? "Yes" : "No"],
     ].flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })]));
     $("featureList").replaceChildren(...info.feature_columns.map((f) => el("li", { text: f })));
   } catch (e) { $("modelKv").replaceChildren(el("dd", { text: e.message })); }
@@ -955,7 +955,7 @@ $("showFeatures").addEventListener("change", () => { $("featureList").hidden = !
 (async function start() {
   if (!token) {
     $("pairScreen").hidden = false;
-    $("pairScreen").replaceChildren(el("h2", { text: "Open LINDEF from the desktop app" }),
+    $("pairScreen").replaceChildren(el("h2", { text: "Open LINDEF from the Desktop App" }),
       el("p", { text: "This page needs the link the LINDEF desktop app opens. Close it and start the app again." }));
     return;
   }

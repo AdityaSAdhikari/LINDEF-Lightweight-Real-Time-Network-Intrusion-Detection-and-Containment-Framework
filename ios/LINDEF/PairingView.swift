@@ -18,7 +18,7 @@ struct PairingView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .overlay(alignment: .bottom) { Rectangle().fill(Paper.ruleStrong).frame(height: 2) }
 
-                Text("Connect to the server LINDEF protects")
+                Text("Connect to the Server LINDEF Protects")
                     .font(Paper.serif(32, .medium))
                     .foregroundStyle(Paper.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -27,13 +27,13 @@ struct PairingView: View {
                     .foregroundStyle(Paper.ink2)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    step(1, "On the desktop, open LINDEF and choose Pair a phone.")
+                    step(1, "On the desktop, open LINDEF and choose Pair a Phone.")
                     step(2, "Scan the code with the iPhone Camera app. It opens LINDEF here.")
                     step(3, "Or copy the code on the desktop and paste it below.")
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Pairing code").font(.subheadline.weight(.semibold))
+                    Text("Pairing Code").font(.subheadline.weight(.semibold))
                     TextField("lindef://", text: $codeText, axis: .vertical)
                         .lineLimit(2...4)
                         .font(.footnote)
@@ -41,7 +41,7 @@ struct PairingView: View {
                         .autocorrectionDisabled()
                         .padding(9)
                         .overlay(RoundedRectangle(cornerRadius: 3).stroke(Paper.rule))
-                    Button("Paste from clipboard") {
+                    Button("Paste from Clipboard") {
                         if let text = UIPasteboard.general.string { codeText = text }
                     }
                     .font(.footnote)
@@ -49,14 +49,14 @@ struct PairingView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Name for this phone").font(.subheadline.weight(.semibold))
+                    Text("Name for This Phone").font(.subheadline.weight(.semibold))
                     TextField("My phone", text: $name)
                         .padding(9)
                         .overlay(RoundedRectangle(cornerRadius: 3).stroke(Paper.rule))
                     Text("Shown in the desktop's list of paired devices.").font(.footnote).foregroundStyle(Paper.ink3)
                 }
 
-                Button(working ? "Pairing" : "Pair with server") { Task { await pair() } }
+                Button(working ? "Pairing" : "Pair with Server") { Task { await pair() } }
                     .buttonStyle(PaperButtonStyle(primary: true))
                     .disabled(working || codeText.isEmpty)
 
@@ -78,7 +78,7 @@ struct PairingView: View {
 
     private func pair() async {
         guard let code = PairingCode(codeText) else {
-            error = "That is not a LINDEF pairing code. It starts with lindef:// and comes from the desktop's Pair a phone button."
+            error = "That is not a LINDEF pairing code. It starts with lindef:// and comes from the desktop's Pair a Phone button."
             return
         }
         working = true
@@ -102,7 +102,7 @@ struct ConfirmPairingView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Pair with this server?").font(Paper.serif(26, .medium))
+            Text("Pair with This Server?").font(Paper.serif(26, .medium))
             Text(model.pairing == nil
                  ? "Only continue if you just made this code on your LINDEF desktop."
                  : "This phone will switch from its current server to this one.")
@@ -113,7 +113,7 @@ struct ConfirmPairingView: View {
             }
             .font(.subheadline)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Name for this phone").font(.subheadline.weight(.semibold))
+                Text("Name for This Phone").font(.subheadline.weight(.semibold))
                 TextField("My phone", text: $name).padding(9).overlay(RoundedRectangle(cornerRadius: 3).stroke(Paper.rule))
             }
             HStack(spacing: 10) {

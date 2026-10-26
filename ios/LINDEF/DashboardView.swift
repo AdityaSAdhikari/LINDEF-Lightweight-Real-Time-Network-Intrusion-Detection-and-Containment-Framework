@@ -28,7 +28,7 @@ struct DashboardView: View {
                     footer
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(model.problem == nil ? "Connecting to the server" : "Can't reach the LINDEF server")
+                        Text(model.problem == nil ? "Connecting to the Server" : "Can't Reach the LINDEF Server")
                             .font(Paper.serif(30, .medium))
                         if let problem = model.problem { Text(problem).foregroundStyle(Paper.ink2) }
                     }
@@ -46,7 +46,7 @@ struct DashboardView: View {
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
         .confirmationDialog("Clear the detection log and lift all simulated containment?", isPresented: $confirmClear,
                             titleVisibility: .visible) {
-            Button("Clear logs", role: .destructive) { Task { await model.command("/v1/clear") } }
+            Button("Clear Logs", role: .destructive) { Task { await model.command("/v1/clear") } }
         }
     }
 
@@ -74,23 +74,23 @@ struct DashboardView: View {
         let m = s.metrics
         let summary = "\(Words.plural(m.attacks, "attack")) in \(Words.plural(m.total, "flow")). " +
             "\(Words.plural(m.contained, "flow")) stopped by simulated containment."
-        var title = "Traffic looks normal"
+        var title = "Traffic Looks Normal"
         var text = summary
         var alarm = false
         if let problem = model.problem {
-            title = "Can't reach the LINDEF server"; text = problem; alarm = true
+            title = "Can't Reach the LINDEF Server"; text = problem; alarm = true
         } else if !s.models.loaded {
-            title = "Detection is off on the server"
+            title = "Detection Is Off on the Server"
             text = "The model files are missing there. Add them to the server's models folder, then restart the agent."
         } else if !s.error.isEmpty {
-            title = "Detection stopped working"; text = s.error.components(separatedBy: "\n")[0]; alarm = true
+            title = "Detection Stopped Working"; text = s.error.components(separatedBy: "\n")[0]; alarm = true
         } else if !s.running && m.total == 0 {
-            title = "Ready to monitor \(model.serverName ?? "the server")"
+            title = "Ready to Monitor \(model.serverName ?? "the server")"
             text = "Press Start to begin checking \(s.settings.mode == "live" ? "live traffic" : "the simulation file")."
         } else if !s.running {
-            title = "Monitoring is stopped"
+            title = "Monitoring Is Stopped"
         } else if !s.containment.active.isEmpty {
-            title = "\(Words.plural(s.containment.active.count, "threat")) contained"
+            title = "\(Words.plural(s.containment.active.count, "Threat")) Contained"
             text = "Simulated: no real traffic was changed. " + summary
         }
         return VStack(alignment: .leading, spacing: 6) {
@@ -110,7 +110,7 @@ struct DashboardView: View {
                     .buttonStyle(PaperButtonStyle(primary: true)).disabled(s.running || !s.models.loaded)
                 Button("Stop") { Task { await model.command("/v1/stop") } }
                     .buttonStyle(PaperButtonStyle()).disabled(!s.running)
-                Button("Clear logs") { confirmClear = true }.buttonStyle(PaperButtonStyle())
+                Button("Clear Logs") { confirmClear = true }.buttonStyle(PaperButtonStyle())
             }
             if let error = model.actionError { Text(error).font(.footnote).foregroundStyle(Paper.bad) }
         }
@@ -118,8 +118,8 @@ struct DashboardView: View {
 
     private func metrics(_ m: AgentState.Metrics) -> some View {
         let cells: [(String, String)] = [
-            (m.total.formatted(), "Flows checked"), (m.attacks.formatted(), "Detected attacks"),
-            (m.benign.formatted(), "Benign flows"), (m.contained.formatted(), "Flows stopped (simulated)"),
+            (m.total.formatted(), "Flows Checked"), (m.attacks.formatted(), "Detected Attacks"),
+            (m.benign.formatted(), "Benign Flows"), (m.contained.formatted(), "Flows Stopped (Simulated)"),
         ]
         return VStack(spacing: 0) {
             Rectangle().fill(Paper.ruleStrong).frame(height: 1)
@@ -220,7 +220,7 @@ struct DashboardView: View {
 
     private func detections(_ recent: [Detection]) -> some View {
         let rows = Array(recent.reversed().prefix(20))
-        return PaperSection(title: "Recent detections", aside: "Newest first", tint: Paper.green) {
+        return PaperSection(title: "Recent Detections", aside: "Newest first", tint: Paper.green) {
             if rows.isEmpty {
                 Text("No traffic checked yet. Press Start to begin.").font(.subheadline).foregroundStyle(Paper.ink3).padding(14)
             } else {
@@ -252,11 +252,11 @@ struct DashboardView: View {
     private func distributions(_ c: AgentState.Charts) -> some View {
         PaperSection(title: "Distributions", aside: "Since last clear", tint: Paper.lavender) {
             VStack(alignment: .leading, spacing: 14) {
-                bars("Attack and benign", c.status) { $0 == "ATTACK" ? Paper.severity("HIGH") : Paper.severity("NONE") }
+                bars("Attack and Benign", c.status) { $0 == "ATTACK" ? Paper.severity("HIGH") : Paper.severity("NONE") }
                     label: { $0 == "ATTACK" ? "Attack" : "Benign" }
                 bars("Severity", c.severity) { Paper.severity($0) } label: { Words.severity($0) }
-                bars("Attack types", c.attacks) { _ in Paper.accent } label: { Words.attack($0) }
-                bars("Recommended responses", c.responses) { _ in Paper.accent } label: { Words.response($0) }
+                bars("Attack Types", c.attacks) { _ in Paper.accent } label: { Words.attack($0) }
+                bars("Recommended Responses", c.responses) { _ in Paper.accent } label: { Words.response($0) }
             }
             .padding(14)
         }
@@ -290,20 +290,20 @@ struct DashboardView: View {
         PaperSection(title: "Monitoring", tint: Paper.blue) {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Traffic source").font(.subheadline.weight(.semibold))
-                    Text(s.settings.mode == "live" ? "Live capture on \(s.settings.interfaceId)" : "Simulation file")
+                    Text("Traffic Source").font(.subheadline.weight(.semibold))
+                    Text(s.settings.mode == "live" ? "Live capture on \(s.settings.interfaceId)" : "Simulation File")
                         .font(.subheadline).foregroundStyle(Paper.ink2)
                     Text("Switch between simulation and live capture on the desktop.").font(.caption).foregroundStyle(Paper.ink3)
                 }
-                SettingSlider(title: "Check every", value: s.settings.refreshSeconds, range: 0.5...10, step: 0.5,
+                SettingSlider(title: "Check Every", value: s.settings.refreshSeconds, range: 0.5...10, step: 0.5,
                               format: { String(format: "%g s", $0) }) { v in
                     Task { await model.command("/v1/settings", ["refresh_seconds": v]) }
                 }
-                SettingSlider(title: "Flows per check (simulation)", value: Double(s.settings.rowsPerStep), range: 1...100, step: 1,
+                SettingSlider(title: "Flows per Check (Simulation)", value: Double(s.settings.rowsPerStep), range: 1...100, step: 1,
                               format: { "\(Int($0))" }) { v in
                     Task { await model.command("/v1/settings", ["rows_per_step": Int(v)]) }
                 }
-                SettingSlider(title: "Capture length (live)", value: Double(s.settings.captureDuration), range: 2...20, step: 1,
+                SettingSlider(title: "Capture Length (Live)", value: Double(s.settings.captureDuration), range: 2...20, step: 1,
                               format: { "\(Int($0)) s" }) { v in
                     Task { await model.command("/v1/settings", ["capture_duration": Int(v)]) }
                 }
@@ -314,7 +314,7 @@ struct DashboardView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Button("Share detection log") {
+            Button("Share Detection Log") {
                 Task { shareURL = await model.logFile() }
             }
             .buttonStyle(PaperButtonStyle())
@@ -332,7 +332,7 @@ struct ThreatsAtHand: View {
     var body: some View {
         let threats = Array(recent.filter { $0.status == "ATTACK" }.suffix(4).reversed())
         VStack(alignment: .leading, spacing: 8) {
-            Text("Threats at hand").font(Paper.serif(17, .semibold))
+            Text("Threats at Hand").font(Paper.serif(17, .semibold))
             if threats.isEmpty {
                 Text("No attacks in the latest flows.").font(.footnote).foregroundStyle(Paper.ink3)
             }
@@ -398,9 +398,9 @@ struct ModelDetails: View {
         DisclosureGroup(isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: 6) {
                 if let info {
-                    Text("Expected features: \(info.featureCount)").font(.footnote)
-                    Text("Feature medians loaded: \(info.mediansLoaded ? "Yes" : "No")").font(.footnote)
-                    Toggle("Show expected feature columns", isOn: $showFeatures).font(.footnote).tint(Paper.accent)
+                    Text("Expected Features: \(info.featureCount)").font(.footnote)
+                    Text("Feature Medians Loaded: \(info.mediansLoaded ? "Yes" : "No")").font(.footnote)
+                    Toggle("Show Expected Feature Columns", isOn: $showFeatures).font(.footnote).tint(Paper.accent)
                     if showFeatures {
                         ForEach(info.featureColumns, id: \.self) { Text($0).font(.caption).foregroundStyle(Paper.ink2) }
                     }
@@ -410,7 +410,7 @@ struct ModelDetails: View {
             }
             .padding(.top, 8)
         } label: {
-            Text("Model and feature details").font(Paper.serif(16, .semibold)).foregroundStyle(Paper.ink)
+            Text("Model and Feature Details").font(Paper.serif(16, .semibold)).foregroundStyle(Paper.ink)
         }
         .tint(Paper.ink2)
         .onChange(of: expanded) { _, open in
@@ -431,17 +431,17 @@ struct SettingsView: View {
             Form {
                 Section("Appearance") {
                     Picker("Theme", selection: $appearance) {
-                        Text("Paper (light)").tag("light")
+                        Text("Paper (Light)").tag("light")
                         Text("Dark").tag("dark")
-                        Text("Match the phone").tag("system")
+                        Text("Match the Phone").tag("system")
                     }
                 }
                 Section {
-                    Picker("Alert me from", selection: $minSeverity) {
-                        Text("Low severity").tag("LOW")
-                        Text("Medium severity").tag("MEDIUM")
-                        Text("High severity").tag("HIGH")
-                        Text("Critical only").tag("CRITICAL")
+                    Picker("Alert Me From", selection: $minSeverity) {
+                        Text("Low Severity").tag("LOW")
+                        Text("Medium Severity").tag("MEDIUM")
+                        Text("High Severity").tag("HIGH")
+                        Text("Critical Only").tag("CRITICAL")
                     }
                 } header: {
                     Text("Notifications")
@@ -452,9 +452,9 @@ struct SettingsView: View {
                     Section {
                         LabeledContent("Server", value: model.serverName ?? pairing.host)
                         LabeledContent("Address", value: "\(pairing.host):\(String(pairing.port))")
-                        LabeledContent("This phone", value: pairing.name)
+                        LabeledContent("This Phone", value: pairing.name)
                         LabeledContent("Certificate", value: String(pairing.fingerprint.prefix(16)) + "...")
-                        Button("Forget this server", role: .destructive) { confirmForget = true }
+                        Button("Forget This Server", role: .destructive) { confirmForget = true }
                     } header: {
                         Text("Connection")
                     } footer: {
@@ -467,7 +467,7 @@ struct SettingsView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .confirmationDialog("Forget this server? You will need a new pairing code to reconnect.",
                                 isPresented: $confirmForget, titleVisibility: .visible) {
-                Button("Forget server", role: .destructive) {
+                Button("Forget Server", role: .destructive) {
                     model.forget()
                     dismiss()
                 }

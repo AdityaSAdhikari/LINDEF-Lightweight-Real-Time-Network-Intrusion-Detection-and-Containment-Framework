@@ -186,7 +186,7 @@ enum Alerts {
             content.title = title
             content.body = defaults.string(forKey: latestBodyKey) ?? ""
         } else {
-            content.title = "LINDEF: \(pending) new alerts"
+            content.title = "LINDEF: \(pending) New Alerts"
             content.body = "Latest: \(title). Open LINDEF for the full list."
         }
         content.threadIdentifier = summaryId

@@ -234,7 +234,7 @@ assert not state["simulated_addresses"]  # this CSV has real address columns
 
 notes = json.loads(phone("/v1/notifications?after=0", token=phone_token)[1])
 assert notes["last_id"] == state["notifications_last_id"] > 0
-assert any(n["kind"] == "containment" and n["title"].endswith("(simulated)") for n in notes["notifications"])
+assert any(n["kind"] == "containment" and n["title"].endswith("(Simulated)") for n in notes["notifications"])
 assert phone("/v1/notifications?after=abc", token=phone_token)[0] == 400
 
 assert phone(f"/v1/containment/{block['id']}/lift", {}, token=phone_token)[0] == 403
@@ -252,11 +252,11 @@ time.sleep(1.5)
 desktop("/api/stop", {})
 errors = [n for n in json.loads(desktop("/api/notifications?after=0&limit=200")[1])["notifications"]
           if n["kind"] == "error"]
-assert len(errors) == 1 and errors[0]["title"] == "Detection stopped working", errors
+assert len(errors) == 1 and errors[0]["title"] == "Detection Stopped Working", errors
 assert "not found" in json.loads(desktop("/api/state")[1])["error"]
 monitor.settings["simulation_csv"] = str(sim_csv)
 time.sleep(0.6)
-assert any("(simulated)" in t for t in popups) and any("Detection stopped working" in t for t in popups), popups
+assert any("(Simulated)" in t for t in popups) and any("Detection Stopped Working" in t for t in popups), popups
 assert len(popups) <= 8, popups  # hundreds of alerts became a handful of summaries
 
 # ----- devices --------------------------------------------------------------------

@@ -196,7 +196,7 @@ def watch_notifications(link: AgentLink):
             if pending == 1:
                 show_system_notification(f"LINDEF: {latest['title']}", latest["body"])
             else:
-                show_system_notification(f"LINDEF: {pending} new alerts", f"Latest: {latest['title']}")
+                show_system_notification(f"LINDEF: {pending} New Alerts", f"Latest: {latest['title']}")
             pending, last_shown = 0, time.time()
         except (LinkError, ValueError, KeyError):
             continue  # agent offline or mid-restart: try again next poll
