@@ -128,6 +128,17 @@ struct PaperButtonStyle: ButtonStyle {
 
 /// Plain words for the codes the agent sends.
 enum Words {
+    static var attackLabels: [String: String] = [:]    // from the agent
+    static var responseLabels: [String: String] = [:]
+
+    private static func pretty(_ code: String) -> String {
+        let spaced = code.replacingOccurrences(of: "_", with: " ")
+        return spaced.prefix(1).uppercased() + spaced.dropFirst()
+    }
+
+    static func attack(_ code: String) -> String { attackLabels[code] ?? pretty(code) }
+    static func response(_ code: String) -> String { responseLabels[code] ?? pretty(code) }
+
     static func severity(_ level: String?) -> String {
         switch level {
         case "LOW": return "Low"

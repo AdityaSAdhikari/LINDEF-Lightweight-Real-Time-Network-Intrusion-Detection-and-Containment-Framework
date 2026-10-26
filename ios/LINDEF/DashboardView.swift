@@ -180,7 +180,7 @@ struct DashboardView: View {
                                 Spacer()
                                 SeverityLabel(level: action.severity)
                             }
-                            Text("\(action.attack)\(action.triggers > 1 ? " (\(action.triggers) times)" : ""). " +
+                            Text("\(Words.attack(action.attack))\(action.triggers > 1 ? " (\(action.triggers) times)" : ""). " +
                                  "\(Words.until(action.expires)). \(Words.plural(action.flowsStopped, "flow")) stopped.")
                                 .font(.footnote).foregroundStyle(Paper.ink2)
                         }
@@ -228,7 +228,7 @@ struct DashboardView: View {
                     RuledRow(last: index == rows.count - 1) {
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
-                                Text(r.status == "ATTACK" ? r.attack : "Benign").font(.subheadline.weight(.semibold))
+                                Text(r.status == "ATTACK" ? Words.attack(r.attack) : "Benign").font(.subheadline.weight(.semibold))
                                 if let contained = r.contained {
                                     Text(contained.capitalized).font(.footnote.weight(.semibold)).foregroundStyle(Paper.severity("CRITICAL"))
                                 }
@@ -237,7 +237,7 @@ struct DashboardView: View {
                             }
                             Text("\(Words.address(r.sourceIP, r.sourcePort)) to \(Words.address(r.destinationIP, r.destinationPort))")
                                 .font(.footnote).foregroundStyle(Paper.ink2)
-                            Text("\(r.time). Probability \(r.probability.map { String(format: "%.4f", $0) } ?? "n/a"). \(r.response)")
+                            Text("\(r.time). Probability \(r.probability.map { String(format: "%.4f", $0) } ?? "n/a"). \(Words.response(r.response))")
                                 .font(.caption).foregroundStyle(Paper.ink3).monospacedDigit()
                         }
                     }
@@ -255,8 +255,8 @@ struct DashboardView: View {
                 bars("Attack and benign", c.status) { $0 == "ATTACK" ? Paper.severity("HIGH") : Paper.severity("NONE") }
                     label: { $0 == "ATTACK" ? "Attack" : "Benign" }
                 bars("Severity", c.severity) { Paper.severity($0) } label: { Words.severity($0) }
-                bars("Attack types", c.attacks) { _ in Paper.accent } label: { $0 }
-                bars("Recommended responses", c.responses) { _ in Paper.accent } label: { $0 }
+                bars("Attack types", c.attacks) { _ in Paper.accent } label: { Words.attack($0) }
+                bars("Recommended responses", c.responses) { _ in Paper.accent } label: { Words.response($0) }
             }
             .padding(14)
         }
@@ -341,7 +341,7 @@ struct ThreatsAtHand: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 7) {
                         RoundedRectangle(cornerRadius: 2).fill(Paper.severity(r.severity)).frame(width: 9, height: 9)
-                        Text(r.attack).font(.subheadline.weight(.semibold))
+                        Text(Words.attack(r.attack)).font(.subheadline.weight(.semibold))
                         Text(done?.capitalized ?? "Watching").font(.footnote.weight(.semibold))
                             .foregroundStyle(done == nil ? Paper.ink3 : Paper.severity("CRITICAL"))
                         Spacer()

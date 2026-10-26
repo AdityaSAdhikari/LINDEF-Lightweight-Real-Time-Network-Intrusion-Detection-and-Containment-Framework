@@ -146,6 +146,29 @@ SEVERITY_MAP = {
     "benign": "NONE",
 }
 
+# Readable names for the dataset's attack codes and the response codes, for display.
+ATTACK_LABELS = {
+    "neptune": "Neptune", "smurf": "Smurf", "back": "Back", "pod": "Ping of death", "teardrop": "Teardrop",
+    "apache2": "Apache2", "mailbomb": "Mail bomb", "land": "Land", "satan": "SATAN", "nmap": "Nmap",
+    "portsweep": "Port sweep", "ipsweep": "IP sweep", "mscan": "Mscan", "saint": "SAINT",
+    "guess_passwd": "Password guessing", "ftp_write": "FTP write", "imap": "IMAP", "phf": "PHF",
+    "multihop": "Multihop", "warezmaster": "Warezmaster", "warezclient": "Warezclient",
+    "snmpguess": "SNMP guessing", "snmpgetattack": "SNMP get attack", "httptunnel": "HTTP tunnel",
+    "rootkit": "Rootkit", "buffer_overflow": "Buffer overflow", "loadmodule": "Load module", "perl": "Perl",
+    "xterm": "Xterm", "ps": "PS", "sqlattack": "SQL attack", "normal": "Normal", "benign": "Benign",
+}
+RESPONSE_LABELS = {"ALLOW": "Allow", "BLOCK_IP": "Block IP", "THROTTLE_IP": "Throttle IP",
+                   "ISOLATE_HOST": "Isolate host", "MONITOR": "Monitor"}
+
+
+def attack_label(code: str) -> str:
+    return ATTACK_LABELS.get(code) or str(code).replace("_", " ").capitalize()
+
+
+def response_label(code: str) -> str:
+    return RESPONSE_LABELS.get(code) or str(code).replace("_", " ").capitalize()
+
+
 INVALID_ATTACK_OUTPUTS = {"0", "1", 0, 1, "normal", "benign", "NORMAL", "BENIGN"}
 
 # Where each flow came from, so a detection can name the address behind it.

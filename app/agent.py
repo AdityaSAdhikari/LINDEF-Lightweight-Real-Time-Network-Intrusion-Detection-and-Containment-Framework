@@ -325,7 +325,7 @@ class Monitor:
                 lasts = (f"Lasts {CONTAINMENT_SECONDS[a['action']] // 60} minutes unless repeated."
                          if a["expires"] else "Lasts until lifted from the desktop.")
                 self.notify("containment", a["severity"], f"{ACTION_VERB[a['action']]} {a['target']} (simulated)",
-                            f"{a['attack']} attack, {a['severity'].lower()} severity. No real traffic was "
+                            f"{engine.attack_label(a['attack'])} attack, {a['severity'].lower()} severity. No real traffic was "
                             f"changed. {lasts}", action_id=a["id"], detection_id=a["detection_id"])
             triggered = {a["detection_id"] for a in started}
             for row in rows:
@@ -335,9 +335,9 @@ class Monitor:
                         and now - self.last_attack_note.get(row["Attack"], 0) >= ATTACK_NOTE_SECONDS):
                     self.last_attack_note[row["Attack"]] = now
                     route = f" from {row['Source IP']} to {row['Destination IP']}" if row.get("Source IP") else ""
-                    self.notify("attack", row["Severity"], f"Attack detected: {row['Attack']}",
+                    self.notify("attack", row["Severity"], f"Attack detected: {engine.attack_label(row['Attack'])}",
                                 f"{row['Severity'].capitalize()} severity{route}. "
-                                f"Recommended response: {row['Response']}.", detection_id=row["ID"])
+                                f"Recommended response: {engine.response_label(row['Response'])}.", detection_id=row["ID"])
         new_file = not engine.LOG_FILE.exists()
         with open(engine.LOG_FILE, "a", newline="") as f:  # grows for the whole session
             writer = csv.DictWriter(f, fieldnames=list(rows[0]))
@@ -438,6 +438,7 @@ class Monitor:
             "containment": containment,
             "recent": [],
             "charts": {"status": [], "severity": [], "attacks": [], "responses": []},
+            "labels": {"attacks": engine.ATTACK_LABELS, "responses": engine.RESPONSE_LABELS},
         }
         if logs_df.empty:
             return state

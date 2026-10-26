@@ -10,7 +10,11 @@ import UserNotifications
 @Observable
 final class AppModel {
     var pairing: Pairing? = Pairing.load()
-    var state: AgentState?
+    var state: AgentState? {
+        didSet {
+            if let labels = state?.labels { Words.attackLabels = labels.attacks; Words.responseLabels = labels.responses }
+        }
+    }
     var serverName: String?
     var notes: [Note] = []
     var problem: String?            // connection or server error shown at the top

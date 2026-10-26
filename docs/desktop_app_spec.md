@@ -209,7 +209,7 @@ All settings, including the flag-only ones, are returned in State so apps can sh
 }
 ```
 
-Chart lists are sorted by count. `attacks` excludes `normal`. Metrics cover
+`labels` maps attack and response codes to readable names for display (for example `guess_passwd` to "Password guessing", `BLOCK_IP` to "Block IP"); the API itself keeps the codes. Chart lists are sorted by count. `attacks` excludes `normal`. Metrics cover
 the session log (latest 500 detections).
 
 ## Simulated containment

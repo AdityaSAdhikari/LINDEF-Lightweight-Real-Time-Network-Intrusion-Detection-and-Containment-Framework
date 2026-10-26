@@ -566,6 +566,9 @@ function el(tag, attrs = {}, ...children) {
 const SEVERITY_WORD = { NONE: "None", LOW: "Low", MEDIUM: "Medium", HIGH: "High", CRITICAL: "Critical", UNKNOWN: "Unknown" };
 const ACTION_WORD = { BLOCK_IP: "Block", THROTTLE_IP: "Throttle", ISOLATE_HOST: "Isolate host" };
 const ACTION_PAST = { BLOCK_IP: "Blocked", THROTTLE_IP: "Throttled", ISOLATE_HOST: "Isolated" };
+const pretty = (code) => String(code).replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+const atk = (code) => state?.labels?.attacks?.[code] || pretty(code);
+const resp = (code) => state?.labels?.responses?.[code] || pretty(code);
 const sev = (s) => el("span", { class: `sev sev-${s || "NONE"}`, text: SEVERITY_WORD[s] || s || "None" });
 const addr = (ip, port) => ip ? (port ? `${ip}:${port}` : ip) : "Unknown";
 const clock = (epoch) => new Date(epoch * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -732,8 +735,8 @@ function render() {
   renderSettings(s.settings);
   renderDist("distStatus", s.charts.status, (k) => k === "ATTACK" ? "var(--sev-high)" : "var(--sev-none)", (k) => k === "ATTACK" ? "Attack" : "Benign");
   renderDist("distSeverity", s.charts.severity, (k) => `var(--sev-${k.toLowerCase()}, var(--sev-medium))`, (k) => SEVERITY_WORD[k] || k);
-  renderDist("distAttacks", s.charts.attacks);
-  renderDist("distResponses", s.charts.responses);
+  renderDist("distAttacks", s.charts.attacks, null, atk);
+  renderDist("distResponses", s.charts.responses, null, resp);
   $("downloadNote").textContent = m.total ? `${plural(m.total, "row")} in the session log` : "";
 }
 
@@ -745,7 +748,7 @@ function renderThreats(recent) {
     square.style.setProperty("--c", `var(--sev-${r.Severity.toLowerCase()}, var(--sev-medium))`);
     const done = r.Contained || ACTION_PAST[r.Response];
     return el("li", { class: threatIds.has(r.ID) ? "" : "enter" }, square,
-      el("strong", { text: r.Attack }),
+      el("strong", { text: atk(r.Attack) }),
       el("span", { class: "addr", text: `from ${addr(r["Source IP"])} to ${addr(r["Destination IP"])}` }),
       el("span", done ? { class: "stopped", text: done.charAt(0) + done.slice(1).toLowerCase() } : { class: "muted", text: "Watching" }),
       el("span", { class: "muted when", text: r.Time }));
@@ -758,7 +761,7 @@ function renderContainment(box, isDesktop, simulatedAddresses) {
   const rows = box.active.map((a) => el("tr", {},
     el("td", { text: ACTION_WORD[a.action] || a.action }),
     el("td", { class: "addr", text: a.target }),
-    el("td", { text: a.triggers > 1 ? `${a.attack} (${a.triggers} times)` : a.attack }),
+    el("td", { text: a.triggers > 1 ? `${atk(a.attack)} (${a.triggers} times)` : atk(a.attack) }),
     el("td", {}, sev(a.severity)),
     el("td", { text: clock(a.started) }),
     el("td", { text: until(a.expires) }),
@@ -779,12 +782,12 @@ function renderContainment(box, isDesktop, simulatedAddresses) {
 function renderDetections(recent) {
   const rows = recent.slice().reverse().map((r) => el("tr", { class: r.Status === "ATTACK" ? "attack" : "" },
     el("td", { text: r.Time }),
-    el("td", { text: r.Status === "ATTACK" ? r.Attack : "Benign" }),
+    el("td", { text: r.Status === "ATTACK" ? atk(r.Attack) : "Benign" }),
     el("td", {}, sev(r.Severity)),
     el("td", { class: "addr", text: addr(r["Source IP"], r["Source Port"]) }),
     el("td", { class: "addr", text: addr(r["Destination IP"], r["Destination Port"]) }),
     el("td", { class: "num", text: r["Attack Probability"] == null ? "n/a" : r["Attack Probability"].toFixed(4) }),
-    el("td", { text: r.Response }),
+    el("td", { text: resp(r.Response) }),
     el("td", r.Contained ? { class: "stopped", text: r.Contained.charAt(0) + r.Contained.slice(1).toLowerCase() } : { text: "" })));
   $("detectRows").replaceChildren(...rows);
   $("detectEmpty").hidden = rows.length > 0;
