@@ -17,6 +17,7 @@ struct DashboardView: View {
                 if let state = model.state {
                     verdict(state)
                     controls(state)
+                    ThreatsAtHand(recent: state.recent)
                     metrics(state.metrics)
                     banners(state)
                     containment(state)
@@ -76,8 +77,6 @@ struct DashboardView: View {
         var title = "Traffic looks normal"
         var text = summary
         var alarm = false
-        let newest = s.containment.active.first
-        let latest = s.recent.last
         if let problem = model.problem {
             title = "Can't reach the LINDEF server"; text = problem; alarm = true
         } else if !s.models.loaded {
@@ -90,12 +89,6 @@ struct DashboardView: View {
             text = "Press Start to begin checking \(s.settings.mode == "live" ? "live traffic" : "the simulation file")."
         } else if !s.running {
             title = "Monitoring is stopped"
-        } else if let newest, Int(Date().timeIntervalSince1970) - newest.started < 20 {
-            title = "\(Words.actionPast(newest.action)) \(newest.target) after \(Words.article(newest.attack)) \(newest.attack) attack"
-            text = "Simulated: no real traffic was changed. " + summary
-            alarm = newest.severity == "HIGH" || newest.severity == "CRITICAL"
-        } else if let latest, latest.status == "ATTACK" {
-            title = "\(latest.attack) attack from \(latest.sourceIP ?? "an unknown address")"; alarm = true
         } else if !s.containment.active.isEmpty {
             title = "\(Words.plural(s.containment.active.count, "threat")) contained"
             text = "Simulated: no real traffic was changed. " + summary
@@ -327,6 +320,43 @@ struct DashboardView: View {
             .buttonStyle(PaperButtonStyle())
             ModelDetails()
         }
+    }
+}
+
+/// The live part of the dashboard: the newest attacks slide in at the top,
+/// so the headline above can stay still.
+struct ThreatsAtHand: View {
+    let recent: [Detection]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let threats = Array(recent.filter { $0.status == "ATTACK" }.suffix(4).reversed())
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Threats at hand").font(Paper.serif(17, .semibold))
+            if threats.isEmpty {
+                Text("No attacks in the latest flows.").font(.footnote).foregroundStyle(Paper.ink3)
+            }
+            ForEach(threats) { r in
+                let done = r.contained ?? ["BLOCK_IP": "BLOCKED", "THROTTLE_IP": "THROTTLED", "ISOLATE_HOST": "ISOLATED"][r.response]
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 7) {
+                        RoundedRectangle(cornerRadius: 2).fill(Paper.severity(r.severity)).frame(width: 9, height: 9)
+                        Text(r.attack).font(.subheadline.weight(.semibold))
+                        Text(done?.capitalized ?? "Watching").font(.footnote.weight(.semibold))
+                            .foregroundStyle(done == nil ? Paper.ink3 : Paper.severity("CRITICAL"))
+                        Spacer()
+                        Text(r.time).font(.caption).foregroundStyle(Paper.ink3).monospacedDigit()
+                    }
+                    Text("from \(Words.address(r.sourceIP, nil)) to \(Words.address(r.destinationIP, nil))")
+                        .font(.caption).foregroundStyle(Paper.ink2).padding(.leading, 16)
+                }
+                .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) { Rectangle().fill(Paper.rule).frame(height: 1) }
+        .animation(.easeOut(duration: 0.4), value: threats.map(\.id))
     }
 }
 

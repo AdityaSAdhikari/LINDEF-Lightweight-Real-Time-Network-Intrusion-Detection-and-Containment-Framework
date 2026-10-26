@@ -118,6 +118,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .verdict .actions { display: flex; gap: 8px; }
 .verdict.alarm h2 { color: var(--sev-critical); }
 
+/* ---------- threats at hand: the live part, so the headline can stay still ---------- */
+.threats { display: grid; grid-template-columns: 180px 1fr; gap: 16px; padding: 12px 0 14px; border-top: 1px solid var(--rule); }
+.threats h3 { font: 600 17px/1.3 var(--serif); margin: 2px 0 0; }
+.threats ol { list-style: none; margin: 0; padding: 0; }
+.threats li {
+  display: grid; grid-template-columns: 9px minmax(110px, 1fr) minmax(200px, 2fr) 100px 70px;
+  gap: 12px; align-items: center; font-size: 14px; padding: 3px 6px; margin: 0 -6px;
+}
+.threats li .sq { width: 9px; height: 9px; border-radius: 2px; background: var(--c, var(--sev-none)); }
+.threats li .when { text-align: right; }
+.threats li.enter { animation: threat-in 0.5s ease-out; }
+@keyframes threat-in {
+  from { opacity: 0; transform: translateY(-6px); background: var(--tint-rose); }
+  60% { background: var(--tint-rose); }
+  to { opacity: 1; transform: none; background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .threats li.enter { animation: none; } }
+
 /* ---------- metrics, ruled like a results table ---------- */
 .metrics {
   display: grid; grid-template-columns: repeat(5, 1fr);
@@ -330,6 +348,14 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
         <button class="btn primary" id="startBtn" type="button">Start</button>
         <button class="btn" id="stopBtn" type="button">Stop</button>
         <button class="btn quiet" id="clearBtn" type="button">Clear logs</button>
+      </div>
+    </section>
+
+    <section class="threats" aria-label="Threats at hand">
+      <h3>Threats at hand</h3>
+      <div>
+        <ol id="threatList"></ol>
+        <p class="muted small" id="threatEmpty" style="margin:2px 0 0">No attacks in the latest flows.</p>
       </div>
     </section>
 
@@ -653,8 +679,6 @@ function render() {
   // Verdict: one sentence about right now.
   const verdict = $("verdict");
   verdict.classList.remove("alarm");
-  const latest = s.recent[s.recent.length - 1];
-  const newest = box.active[0];
   const host = connection?.health?.server || connection?.host || "the server";
   const source = s.settings.mode === "live" ? `live traffic on ${s.settings.interface_id}` : "the simulation file";
   let title, text;
@@ -674,14 +698,6 @@ function render() {
     if (!s.running) {
       title = "Monitoring is stopped";
       text = summary;
-    } else if (newest && Date.now() / 1000 - newest.started < 20) {
-      title = `${ACTION_PAST[newest.action]} ${newest.target} after ${/^([aeiou]|http|ftp|xterm)/i.test(newest.attack) ? "an" : "a"} ${newest.attack} attack`;
-      text = `Simulated: no real traffic was changed. ${summary}`;
-      if (newest.severity === "CRITICAL" || newest.severity === "HIGH") verdict.classList.add("alarm");
-    } else if (latest && latest.Status === "ATTACK") {
-      title = `${latest.Attack} attack from ${addr(latest["Source IP"])}`;
-      text = summary;
-      verdict.classList.add("alarm");
     } else if (box.active.length) {
       title = `${plural(box.active.length, "threat")} contained`;
       text = `Simulated: no real traffic was changed. ${summary}`;
@@ -709,6 +725,7 @@ function render() {
     document.createTextNode("Detection is off. The server is missing these model files: "),
     ...missing.flatMap((p, i) => [i ? document.createTextNode(", ") : null, el("code", { text: p.split("/").pop() })]).filter(Boolean));
 
+  renderThreats(s.recent);
   renderContainment(box, isDesktop, s.simulated_addresses);
   renderDetections(s.recent);
   renderSettings(s.settings);
@@ -717,6 +734,23 @@ function render() {
   renderDist("distAttacks", s.charts.attacks);
   renderDist("distResponses", s.charts.responses);
   $("downloadNote").textContent = m.total ? `${plural(m.total, "row")} in the session log` : "";
+}
+
+let threatIds = new Set();  // threats already on screen; only new ones animate in
+function renderThreats(recent) {
+  const threats = recent.filter((r) => r.Status === "ATTACK").slice(-5).reverse();
+  $("threatList").replaceChildren(...threats.map((r) => {
+    const square = el("span", { class: "sq" });
+    square.style.setProperty("--c", `var(--sev-${r.Severity.toLowerCase()}, var(--sev-medium))`);
+    const done = r.Contained || ACTION_PAST[r.Response];
+    return el("li", { class: threatIds.has(r.ID) ? "" : "enter" }, square,
+      el("strong", { text: r.Attack }),
+      el("span", { class: "addr", text: `from ${addr(r["Source IP"])} to ${addr(r["Destination IP"])}` }),
+      el("span", done ? { class: "stopped", text: done.charAt(0) + done.slice(1).toLowerCase() } : { class: "muted", text: "Watching" }),
+      el("span", { class: "muted when", text: r.Time }));
+  }));
+  threatIds = new Set(threats.map((r) => r.ID));
+  $("threatEmpty").hidden = threats.length > 0;
 }
 
 function renderContainment(box, isDesktop, simulatedAddresses) {
