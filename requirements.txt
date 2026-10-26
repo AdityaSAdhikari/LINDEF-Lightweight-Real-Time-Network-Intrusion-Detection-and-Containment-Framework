@@ -10,3 +10,4 @@ streamlit
 streamlit-autorefresh
 segno
 pywebview
+cryptography

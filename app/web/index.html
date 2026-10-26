@@ -1,11 +1,936 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LINDEF</title>
-<body style="font-family: Georgia, serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.6">
-<h1>LINDEF is running</h1>
-<p>The detection backend is up. The desktop and phone interface has not been built yet.</p>
-<p>The API is described in <code>docs/desktop_app_spec.md</code>.</p>
+<link rel="icon" type="image/png" href="/icon.png">
+<style>
+:root {
+  --paper: #ffffff;
+  --paper-2: #f6f7f8;
+  --ink: #1b1f24;
+  --ink-2: #4a535d;
+  --ink-3: #707a85;
+  --rule: #cfd5db;
+  --rule-strong: #1b1f24;
+  --accent: #23517f;
+  --accent-ink: #ffffff;
+  --focus: #2f6db0;
+
+  --tint-blue: #dde9f5;
+  --tint-green: #e2efd9;
+  --tint-lavender: #e9e2f4;
+  --tint-rose: #f5dfdc;
+  --tint-peach: #fbe6d4;
+  --tint-butter: #faf0cc;
+
+  --sev-none: #87909a;
+  --sev-low: #3d7a55;
+  --sev-medium: #a5670f;
+  --sev-high: #c2410c;
+  --sev-critical: #b42318;
+  --ok: #3d7a55;
+  --bad: #b42318;
+
+  --serif: "Iowan Old Style", "Charter", "Bitstream Charter", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --paper: #17191c;
+  --paper-2: #1e2124;
+  --ink: #e7e9ec;
+  --ink-2: #b4bbc3;
+  --ink-3: #8b939c;
+  --rule: #353a40;
+  --rule-strong: #c9ced4;
+  --accent: #8fb6e0;
+  --accent-ink: #10161d;
+  --focus: #8fb6e0;
+
+  --tint-blue: #1f2b37;
+  --tint-green: #213026;
+  --tint-lavender: #2a2537;
+  --tint-rose: #352423;
+  --tint-peach: #36291f;
+  --tint-butter: #33301d;
+
+  --sev-none: #8b939c;
+  --sev-low: #74b48c;
+  --sev-medium: #e0a24a;
+  --sev-high: #f08a4b;
+  --sev-critical: #f2776b;
+  --ok: #74b48c;
+  --bad: #f2776b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* ---------- page frame ---------- */
+.page { max-width: 1440px; margin: 0 auto; padding: 0 28px 48px; }
+.masthead {
+  display: flex; align-items: center; gap: 20px;
+  padding: 18px 0 14px;
+  border-bottom: 2px solid var(--rule-strong);
+}
+.wordmark { font: 600 26px/1 var(--serif); letter-spacing: 0.02em; margin: 0; }
+.subtitle { color: var(--ink-3); font-size: 13.5px; }
+.masthead .spacer { flex: 1; }
+.server-line { color: var(--ink-2); font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sev-none); display: inline-block; }
+.dot.on { background: var(--ok); }
+.dot.off { background: var(--bad); }
+
+.btn {
+  border: 1px solid var(--rule-strong); background: var(--paper); color: var(--ink);
+  padding: 7px 14px; border-radius: 3px; cursor: pointer; line-height: 1.2;
+}
+.btn:hover { background: var(--paper-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.quiet { border-color: var(--rule); color: var(--ink-2); }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+/* ---------- the verdict ---------- */
+.verdict {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px 32px; align-items: end;
+  padding: 30px 0 22px;
+}
+.verdict h2 {
+  font: 500 clamp(28px, 3.2vw, 44px)/1.12 var(--serif);
+  margin: 0; max-width: 30ch; text-wrap: balance;
+}
+.verdict p { margin: 6px 0 0; color: var(--ink-2); max-width: 70ch; }
+.verdict .actions { display: flex; gap: 8px; }
+.verdict.alarm h2 { color: var(--sev-critical); }
+
+/* ---------- metrics, ruled like a results table ---------- */
+.metrics {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  border-top: 1px solid var(--rule-strong); border-bottom: 1px solid var(--rule-strong);
+}
+.metric { padding: 12px 16px; border-left: 1px solid var(--rule); }
+.metric:first-child { border-left: 0; padding-left: 0; }
+.metric .value { font: 500 30px/1.1 var(--serif); }
+.metric .label { color: var(--ink-3); font-size: 13px; }
+
+.banner {
+  margin: 18px 0 0; padding: 10px 14px; border-left: 3px solid var(--bad);
+  background: var(--tint-rose); color: var(--ink);
+}
+.banner.note { border-left-color: var(--sev-medium); background: var(--tint-butter); }
+.banner code { font-size: 12.5px; }
+
+/* ---------- sections ---------- */
+.columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 28px; margin-top: 28px; }
+.stack { display: grid; gap: 28px; align-content: start; }
+.section { border: 1px solid var(--rule); background: var(--paper); }
+.section > header {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 9px 16px; border-bottom: 1px solid var(--rule);
+}
+.section > header h3 { font: 600 18px/1.25 var(--serif); margin: 0; }
+.section > header .aside { color: var(--ink-2); font-size: 13px; margin-left: auto; }
+.section .body { padding: 14px 16px; }
+.section .body.flush { padding: 0; }
+.t-blue > header { background: var(--tint-blue); }
+.t-green > header { background: var(--tint-green); }
+.t-lavender > header { background: var(--tint-lavender); }
+.t-rose > header { background: var(--tint-rose); }
+.t-peach > header { background: var(--tint-peach); }
+.t-butter > header { background: var(--tint-butter); }
+
+.empty { color: var(--ink-3); padding: 14px 16px; margin: 0; }
+.muted { color: var(--ink-3); }
+.small { font-size: 13px; }
+
+/* ---------- tables ---------- */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th {
+  text-align: left; font-weight: 600; color: var(--ink-2);
+  padding: 7px 9px; border-bottom: 1px solid var(--rule-strong); white-space: nowrap;
+}
+td { padding: 6px 9px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; }
+th:first-child, td:first-child { padding-left: 16px; }
+th:last-child, td:last-child { padding-right: 16px; }
+.addr { white-space: nowrap; }
+.scroll { max-height: 420px; overflow-y: auto; }
+.scroll thead th { position: sticky; top: 0; background: var(--paper); z-index: 1; }
+tr.attack td:first-child { box-shadow: inset 3px 0 0 var(--sev-high); }
+
+.sev { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sev::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: var(--c, var(--sev-none)); }
+.sev-NONE { --c: var(--sev-none); }
+.sev-LOW { --c: var(--sev-low); }
+.sev-MEDIUM { --c: var(--sev-medium); }
+.sev-HIGH { --c: var(--sev-high); }
+.sev-CRITICAL { --c: var(--sev-critical); }
+.sev-UNKNOWN { --c: var(--sev-medium); }
+.stopped { font-weight: 600; color: var(--sev-critical); }
+
+/* ---------- distributions ---------- */
+.dists { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dist { padding: 14px 16px; border-left: 1px solid var(--rule); }
+.dist:first-child { border-left: 0; }
+.dist h4 { font: 600 15px/1.3 var(--serif); margin: 0 0 10px; }
+.bar { display: grid; grid-template-columns: minmax(70px, 40%) 1fr 36px; gap: 8px; align-items: center; font-size: 13px; margin: 5px 0; }
+.bar .track { height: 10px; background: var(--paper-2); border: 1px solid var(--rule); }
+.bar .fill { height: 100%; background: var(--c, var(--accent)); }
+.bar .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- alerts ---------- */
+.alerts { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; }
+.alerts li { padding: 10px 16px; border-bottom: 1px solid var(--rule); }
+.alerts li:last-child { border-bottom: 0; }
+.alerts .title { font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+.alerts .title .when { margin-left: auto; font-weight: 400; color: var(--ink-3); font-size: 12.5px; white-space: nowrap; }
+.alerts .text { color: var(--ink-2); font-size: 13.5px; margin-top: 2px; }
+.alerts li.fresh { background: var(--tint-peach); }
+
+/* ---------- forms ---------- */
+.field { display: grid; gap: 4px; margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+.field label, .field .label { font-weight: 600; font-size: 13.5px; }
+.field .hint { color: var(--ink-3); font-size: 12.5px; }
+.range-row { display: grid; grid-template-columns: 1fr 70px; gap: 10px; align-items: center; }
+.range-row output { text-align: right; color: var(--ink-2); }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+input[type="text"], textarea, select {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 3px; background: var(--paper);
+}
+textarea { resize: vertical; min-height: 64px; font-size: 13px; }
+.segmented { justify-self: start; display: inline-flex; border: 1px solid var(--rule-strong); border-radius: 3px; overflow: hidden; }
+.segmented button { border: 0; background: var(--paper); padding: 6px 14px; cursor: pointer; }
+.segmented button + button { border-left: 1px solid var(--rule-strong); }
+.segmented button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.segmented button:disabled { cursor: default; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 13px; margin: 0; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+
+.devices { list-style: none; margin: 0; padding: 0; }
+.devices li { display: flex; gap: 10px; align-items: center; padding: 9px 16px; border-bottom: 1px solid var(--rule); }
+.devices li:last-child { border-bottom: 0; }
+.devices .who { flex: 1; min-width: 0; }
+.devices .who strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.section footer { padding: 10px 16px; border-top: 1px solid var(--rule); display: flex; gap: 8px; flex-wrap: wrap; }
+
+details.model summary { cursor: pointer; padding: 10px 16px; font: 600 16px/1.3 var(--serif); }
+details.model .body { border-top: 1px solid var(--rule); }
+.features { columns: 3 220px; font-size: 12.5px; margin: 10px 0 0; padding-left: 18px; }
+
+.bottom-row { display: flex; gap: 12px; align-items: center; margin-top: 28px; flex-wrap: wrap; }
+
+/* ---------- pairing screen and dialog ---------- */
+.pairing { max-width: 640px; margin: 64px auto; }
+.pairing h2 { font: 500 38px/1.15 var(--serif); margin: 0 0 12px; }
+.pairing p { color: var(--ink-2); margin: 0 0 18px; }
+.pairing ol { color: var(--ink-2); padding-left: 20px; margin: 0 0 22px; }
+.pairing ol li { margin-bottom: 6px; }
+.pairing code { font-size: 13px; background: var(--paper-2); padding: 1px 5px; border: 1px solid var(--rule); }
+.form-error { color: var(--bad); margin-top: 10px; min-height: 1.5em; }
+
+dialog {
+  border: 1px solid var(--rule-strong); border-radius: 4px; padding: 0; background: var(--paper); color: var(--ink);
+  width: min(460px, calc(100vw - 32px));
+}
+dialog::backdrop { background: rgba(20, 24, 28, 0.45); }
+dialog header { padding: 12px 18px; border-bottom: 1px solid var(--rule); background: var(--tint-butter); }
+dialog header h3 { margin: 0; font: 600 19px/1.3 var(--serif); }
+dialog .body { padding: 18px; text-align: center; }
+dialog .qr { background: #fff; padding: 10px; display: inline-block; border: 1px solid var(--rule); }
+dialog .qr img { display: block; width: 240px; height: 240px; image-rendering: pixelated; }
+dialog .code { font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; text-align: left; margin-top: 12px; }
+dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---------- narrow screens ---------- */
+@media (max-width: 1100px) {
+  .columns { grid-template-columns: 1fr; }
+  .dists { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dist:nth-child(3) { border-left: 0; }
+  .dist:nth-child(n+3) { border-top: 1px solid var(--rule); }
+}
+@media (max-width: 640px) {
+  .page { padding: 0 16px 32px; }
+  .masthead { flex-wrap: wrap; }
+  .subtitle { display: none; }
+  .verdict { grid-template-columns: 1fr; }
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .metric:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .metric:nth-child(n+3) { border-top: 1px solid var(--rule); }
+  .dists { grid-template-columns: 1fr; }
+  .dist { border-left: 0; border-top: 1px solid var(--rule); }
+  .dist:first-child { border-top: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .alerts li.fresh { transition: background 1.2s ease; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="masthead">
+    <h1 class="wordmark">LINDEF</h1>
+    <span class="subtitle">Lightweight network intrusion detection and containment</span>
+    <span class="spacer"></span>
+    <span class="server-line" id="serverLine" hidden><span class="dot" id="serverDot"></span><span id="serverText"></span></span>
+    <button class="btn quiet small" id="themeBtn" type="button">Dark mode</button>
+  </div>
+
+  <!-- Not paired yet -->
+  <section class="pairing" id="pairScreen" hidden>
+    <h2>Connect to the server LINDEF protects</h2>
+    <p>The LINDEF agent runs on that server. This computer pairs with it once, then reconnects on its own.</p>
+    <ol>
+      <li>On the server, start the agent: <code>python app/agent.py</code></li>
+      <li>Copy the desktop pairing code it prints. It starts with <code>lindef://</code> and works for 10 minutes.</li>
+      <li>Paste it below.</li>
+    </ol>
+    <form id="pairForm">
+      <div class="field">
+        <label for="pairCode">Pairing code</label>
+        <textarea id="pairCode" rows="3" required spellcheck="false" autocomplete="off" placeholder="lindef://"></textarea>
+      </div>
+      <div class="field">
+        <label for="pairName">Name for this computer</label>
+        <input type="text" id="pairName" maxlength="80" placeholder="Front office desktop">
+        <span class="hint">Shown in the list of paired devices.</span>
+      </div>
+      <button class="btn primary" type="submit" id="pairBtn">Pair with server</button>
+      <div class="form-error" id="pairError" role="alert"></div>
+    </form>
+  </section>
+
+  <!-- Paired -->
+  <main id="dash" hidden>
+    <section class="verdict" id="verdict" aria-live="polite">
+      <div>
+        <h2 id="verdictTitle">Connecting to the server</h2>
+        <p id="verdictText"></p>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="startBtn" type="button">Start</button>
+        <button class="btn" id="stopBtn" type="button">Stop</button>
+        <button class="btn quiet" id="clearBtn" type="button">Clear logs</button>
+      </div>
+    </section>
+
+    <div class="metrics">
+      <div class="metric"><div class="value" id="mTotal">0</div><div class="label">Flows checked</div></div>
+      <div class="metric"><div class="value" id="mAttacks">0</div><div class="label">Detected attacks</div></div>
+      <div class="metric"><div class="value" id="mBenign">0</div><div class="label">Benign flows</div></div>
+      <div class="metric"><div class="value" id="mStopped">0</div><div class="label">Flows stopped (simulated)</div></div>
+      <div class="metric"><div class="value" id="mLatest">Waiting</div><div class="label">Latest status</div></div>
+    </div>
+
+    <div class="banner" id="errorBanner" role="alert" hidden></div>
+    <div class="banner note" id="modelsBanner" hidden></div>
+
+    <div class="columns">
+      <div class="stack">
+        <section class="section t-rose">
+          <header><h3>Containment</h3><span class="aside" id="containAside">Simulated: no real traffic is changed</span></header>
+          <div class="body flush">
+            <p class="empty" id="containEmpty">Nothing is contained. When LINDEF detects an attack it blocks the source, throttles it, or isolates the affected host here.</p>
+            <div class="table-wrap scroll" id="containWrap" hidden>
+              <table>
+                <thead><tr><th>Action</th><th>Address</th><th>Attack</th><th>Severity</th><th>Started</th><th>Ends</th><th class="num">Stopped</th><th></th></tr></thead>
+                <tbody id="containRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="section t-green">
+          <header><h3>Recent detections</h3><span class="aside">Latest 50, newest first</span></header>
+          <div class="body flush">
+            <p class="empty" id="detectEmpty">No traffic checked yet. Press Start to begin.</p>
+            <div class="table-wrap scroll" id="detectWrap" hidden>
+              <table>
+                <thead><tr><th>Time</th><th>Result</th><th>Severity</th><th>Source</th><th>Destination</th><th class="num">Attack probability</th><th>Response</th><th>Contained</th></tr></thead>
+                <tbody id="detectRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="section t-peach">
+          <header><h3>Alerts</h3><span class="aside" id="alertsAside"></span></header>
+          <div class="body flush">
+            <p class="empty" id="alertsEmpty">No alerts yet.</p>
+            <ul class="alerts" id="alertList"></ul>
+          </div>
+          <footer>
+            <label class="check"><input type="checkbox" id="prefSystem"> Show alerts as system notifications</label>
+            <label class="check small">From
+              <select id="prefSeverity" style="width:auto">
+                <option value="LOW">Low</option><option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option><option value="CRITICAL">Critical</option>
+              </select> severity up</label>
+          </footer>
+        </section>
+
+        <section class="section t-blue">
+          <header><h3>Monitoring</h3></header>
+          <div class="body">
+            <div class="field">
+              <span class="label">Traffic source</span>
+              <div class="segmented" role="group" aria-label="Traffic source">
+                <button type="button" id="modeSim" aria-pressed="true">Simulation</button>
+                <button type="button" id="modeLive" aria-pressed="false">Live capture</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="refresh">Check every</label>
+              <div class="range-row"><input type="range" id="refresh" min="0.5" max="10" step="0.5"><output id="refreshOut"></output></div>
+            </div>
+            <div class="field">
+              <label for="rows">Flows per check (simulation)</label>
+              <div class="range-row"><input type="range" id="rows" min="1" max="100" step="1"><output id="rowsOut"></output></div>
+            </div>
+            <div class="field">
+              <label for="capture">Capture length (live)</label>
+              <div class="range-row"><input type="range" id="capture" min="2" max="20" step="1"><output id="captureOut"></output></div>
+            </div>
+            <div class="field">
+              <span class="label">Set on the server</span>
+              <dl class="kv" id="sourceKv"></dl>
+              <span class="hint">Commands and paths run on the server, so they are set there with agent flags, never over the network.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="section t-butter">
+          <header><h3>Devices</h3><span class="aside" id="devicesAside"></span></header>
+          <div class="body flush"><ul class="devices" id="deviceList"></ul></div>
+          <footer>
+            <button class="btn primary small" id="pairPhoneBtn" type="button">Pair a phone</button>
+            <button class="btn quiet small" id="unpairBtn" type="button">Unpair this computer</button>
+          </footer>
+        </section>
+      </div>
+    </div>
+
+    <section class="section t-lavender" style="margin-top:28px">
+      <header><h3>Distributions</h3><span class="aside">Across the latest 500 flows</span></header>
+      <div class="dists">
+        <div class="dist"><h4>Attack and benign</h4><div id="distStatus"></div></div>
+        <div class="dist"><h4>Severity</h4><div id="distSeverity"></div></div>
+        <div class="dist"><h4>Attack types</h4><div id="distAttacks"></div></div>
+        <div class="dist"><h4>Recommended responses</h4><div id="distResponses"></div></div>
+      </div>
+    </section>
+
+    <div class="bottom-row">
+      <button class="btn" id="downloadBtn" type="button">Download detection log</button>
+      <span class="muted small" id="downloadNote"></span>
+    </div>
+
+    <details class="model section" id="modelDetails" style="margin-top:20px">
+      <summary>Model and feature details</summary>
+      <div class="body">
+        <dl class="kv" id="modelKv"></dl>
+        <label class="check small" style="margin-top:12px"><input type="checkbox" id="showFeatures"> Show expected feature columns</label>
+        <ol class="features" id="featureList" hidden></ol>
+      </div>
+    </details>
+  </main>
+</div>
+
+<dialog id="phoneDialog" aria-labelledby="phoneDialogTitle">
+  <header><h3 id="phoneDialogTitle">Pair a phone</h3></header>
+  <div class="body">
+    <div class="qr"><img id="phoneQr" alt="Pairing QR code for the LINDEF phone app"></div>
+    <p style="margin:14px 0 0">Open the LINDEF app on the phone and scan this code. It works once.</p>
+    <p class="muted small" id="phoneExpires"></p>
+    <div class="code" id="phoneCode"></div>
+  </div>
+  <footer>
+    <button class="btn quiet" id="copyCodeBtn" type="button">Copy code</button>
+    <button class="btn primary" id="closeDialogBtn" type="button">Done</button>
+  </footer>
+</dialog>
+
+<script>
+"use strict";
+
+// ---------- local token: arrives in the URL fragment once, then leaves the address bar ----------
+const hashToken = new URLSearchParams(location.hash.slice(1)).get("t");
+if (hashToken) {
+  try { sessionStorage.setItem("lindef-token", hashToken); } catch (e) {}
+  history.replaceState(null, "", location.pathname);
+}
+let token = hashToken;
+try { token = token || sessionStorage.getItem("lindef-token"); } catch (e) {}
+
+// ---------- theme ----------
+const themeBtn = document.getElementById("themeBtn");
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  themeBtn.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+}
+let savedTheme = "light";
+try { savedTheme = localStorage.getItem("lindef-theme") || "light"; } catch (e) {}
+applyTheme(savedTheme);
+themeBtn.addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try { localStorage.setItem("lindef-theme", next); } catch (e) {}
+});
+
+// ---------- helpers ----------
+const $ = (id) => document.getElementById(id);
+class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
+
+async function api(path, options = {}) {
+  const init = { method: options.method || (options.body !== undefined ? "POST" : "GET"),
+                 headers: { Authorization: `Bearer ${token}` } };
+  if (options.body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(options.body);
+  }
+  let res;
+  try {
+    res = await fetch(path, init);
+  } catch (e) {
+    throw new ApiError(0, "The LINDEF desktop app has stopped. Start it again to reconnect.");
+  }
+  if (options.raw) {
+    if (!res.ok) throw new ApiError(res.status, "Download failed.");
+    return res;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error || `Request failed (${res.status}).`);
+  return data;
+}
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === "class") node.className = value;
+    else if (key === "text") node.textContent = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value);
+  }
+  for (const child of children) if (child != null) node.append(child);
+  return node;
+}
+
+const SEVERITY_WORD = { NONE: "None", LOW: "Low", MEDIUM: "Medium", HIGH: "High", CRITICAL: "Critical", UNKNOWN: "Unknown" };
+const ACTION_WORD = { BLOCK_IP: "Block", THROTTLE_IP: "Throttle", ISOLATE_HOST: "Isolate host" };
+const ACTION_PAST = { BLOCK_IP: "Blocked", THROTTLE_IP: "Throttled", ISOLATE_HOST: "Isolated" };
+const sev = (s) => el("span", { class: `sev sev-${s || "NONE"}`, text: SEVERITY_WORD[s] || s || "None" });
+const addr = (ip, port) => ip ? (port ? `${ip}:${port}` : ip) : "Unknown";
+const clock = (epoch) => new Date(epoch * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+function ago(epoch) {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - epoch));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  return clock(epoch);
+}
+function until(epoch) {
+  if (epoch == null) return "When lifted";
+  const s = Math.max(0, Math.round(epoch - Date.now() / 1000));
+  return s >= 60 ? `In ${Math.ceil(s / 60)} min` : `In ${s}s`;
+}
+const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+const typing = (input) => document.activeElement === input;
+
+// ---------- app state ----------
+let connection = null;     // from /api/connection
+let state = null;          // from /api/state
+let alerts = [];           // newest first
+let alertsLastId = 0;
+let freshAlertIds = new Set();
+let devicesTimer = null;
+let pollTimer = null;
+
+// ---------- pairing ----------
+$("pairForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("pairBtn").disabled = true;
+  $("pairError").textContent = "";
+  try {
+    connection = await api("/api/connection", { body: { code: $("pairCode").value.trim(), name: $("pairName").value.trim() } });
+    $("pairCode").value = "";
+    showDashboard();
+  } catch (e) {
+    $("pairError").textContent = e.message;
+  } finally {
+    $("pairBtn").disabled = false;
+  }
+});
+
+function showPairing() {
+  $("dash").hidden = true;
+  $("serverLine").hidden = true;
+  $("pairScreen").hidden = false;
+  clearInterval(pollTimer); clearInterval(devicesTimer);
+}
+
+function showDashboard() {
+  $("pairScreen").hidden = true;
+  $("dash").hidden = false;
+  $("serverLine").hidden = false;
+  alerts = []; alertsLastId = 0;
+  refresh();
+  loadAlerts(true);
+  refreshDevices();
+  clearInterval(pollTimer); clearInterval(devicesTimer);
+  pollTimer = setInterval(refresh, 1500);
+  devicesTimer = setInterval(() => { refreshDevices(); refreshConnection(); }, 5000);
+}
+
+async function refreshConnection() {
+  try {
+    connection = await api("/api/connection");
+    if (!connection.paired) return showPairing();
+    renderServerLine();
+  } catch (e) { /* the state poll reports errors */ }
+}
+
+function renderServerLine() {
+  const reachable = connection && connection.reachable !== false && !refresh.failed;
+  $("serverDot").className = `dot ${reachable ? "on" : "off"}`;
+  const host = connection ? `${connection.health?.server || connection.host}` : "";
+  $("serverText").textContent = reachable ? `Connected to ${host}` : `Can't reach ${host}`;
+}
+
+// ---------- main poll ----------
+async function refresh() {
+  try {
+    state = await api("/api/state");
+    refresh.failed = false;
+    render();
+    if (state.notifications_last_id > alertsLastId) loadAlerts(false);
+  } catch (e) {
+    refresh.failed = true;
+    if (e.status === 503) return showPairing();
+    renderOffline(e.message);
+  }
+  renderServerLine();
+}
+
+function renderOffline(message) {
+  $("verdict").classList.remove("alarm");
+  $("verdictTitle").textContent = "Can't reach the LINDEF server";
+  $("verdictText").textContent = message;
+  setControlsEnabled(false);
+}
+
+function setControlsEnabled(on) {
+  for (const id of ["startBtn", "stopBtn", "clearBtn", "refresh", "rows", "capture", "modeSim", "modeLive"]) $(id).disabled = !on;
+}
+
+function render() {
+  const s = state, m = s.metrics, box = s.containment;
+  const isDesktop = connection?.role === "desktop";
+  setControlsEnabled(true);
+  $("startBtn").disabled = s.running || !s.models.loaded;
+  $("stopBtn").disabled = !s.running;
+  $("modeSim").disabled = $("modeLive").disabled = !isDesktop;
+
+  // Verdict: one sentence about right now.
+  const verdict = $("verdict");
+  verdict.classList.remove("alarm");
+  const latest = s.recent[s.recent.length - 1];
+  const newest = box.active[0];
+  const host = connection?.health?.server || connection?.host || "the server";
+  const source = s.settings.mode === "live" ? `live traffic on ${s.settings.interface_id}` : "the simulation file";
+  let title, text;
+  if (!s.models.loaded) {
+    title = "Detection is off on the server";
+    text = "The model files are missing there. Add them to the server's models folder, then restart the agent.";
+  } else if (s.error) {
+    title = "Detection stopped working";
+    text = s.error.split("\n")[0];
+    verdict.classList.add("alarm");
+  } else if (!s.running && m.total === 0) {
+    title = `Ready to monitor ${host}`;
+    text = `Press Start to begin checking ${source}.`;
+  } else {
+    const summary = `${plural(m.attacks, "attack")} in ${plural(m.total, "flow")}. ` +
+      `${plural(m.contained, "flow")} stopped by simulated containment.`;
+    if (!s.running) {
+      title = "Monitoring is stopped";
+      text = summary;
+    } else if (newest && Date.now() / 1000 - newest.started < 20) {
+      title = `${ACTION_PAST[newest.action]} ${newest.target} after ${/^([aeiou]|http|ftp|xterm)/i.test(newest.attack) ? "an" : "a"} ${newest.attack} attack`;
+      text = `Simulated: no real traffic was changed. ${summary}`;
+      if (newest.severity === "CRITICAL" || newest.severity === "HIGH") verdict.classList.add("alarm");
+    } else if (latest && latest.Status === "ATTACK") {
+      title = `${latest.Attack} attack from ${addr(latest["Source IP"])}`;
+      text = summary;
+      verdict.classList.add("alarm");
+    } else if (box.active.length) {
+      title = `${plural(box.active.length, "threat")} contained`;
+      text = `Simulated: no real traffic was changed. ${summary}`;
+    } else {
+      title = "Traffic looks normal";
+      text = `${summary} Checking every ${s.settings.refresh_seconds} seconds.`;
+    }
+  }
+  $("verdictTitle").textContent = title;
+  $("verdictText").textContent = text;
+
+  // Metrics
+  $("mTotal").textContent = m.total.toLocaleString();
+  $("mAttacks").textContent = m.attacks.toLocaleString();
+  $("mBenign").textContent = m.benign.toLocaleString();
+  $("mStopped").textContent = m.contained.toLocaleString();
+  $("mLatest").textContent = m.latest === "Waiting" ? "Waiting" : m.latest === "ATTACK" ? "Attack" : "Benign";
+
+  // Banners
+  $("errorBanner").hidden = !s.error;
+  $("errorBanner").textContent = s.error ? `The last check failed: ${s.error}` : "";
+  const missing = s.models.missing || [];
+  $("modelsBanner").hidden = s.models.loaded;
+  $("modelsBanner").replaceChildren(
+    document.createTextNode("Detection is off. The server is missing these model files: "),
+    ...missing.flatMap((p, i) => [i ? document.createTextNode(", ") : null, el("code", { text: p.split("/").pop() })]).filter(Boolean));
+
+  renderContainment(box, isDesktop, s.simulated_addresses);
+  renderDetections(s.recent);
+  renderSettings(s.settings);
+  renderDist("distStatus", s.charts.status, (k) => k === "ATTACK" ? "var(--sev-high)" : "var(--sev-none)", (k) => k === "ATTACK" ? "Attack" : "Benign");
+  renderDist("distSeverity", s.charts.severity, (k) => `var(--sev-${k.toLowerCase()}, var(--sev-medium))`, (k) => SEVERITY_WORD[k] || k);
+  renderDist("distAttacks", s.charts.attacks);
+  renderDist("distResponses", s.charts.responses);
+  $("downloadNote").textContent = m.total ? `${plural(m.total, "row")} in the session log` : "";
+}
+
+function renderContainment(box, isDesktop, simulatedAddresses) {
+  const rows = box.active.map((a) => el("tr", {},
+    el("td", { text: ACTION_WORD[a.action] || a.action }),
+    el("td", { class: "addr", text: a.target }),
+    el("td", { text: a.triggers > 1 ? `${a.attack} (${a.triggers} times)` : a.attack }),
+    el("td", {}, sev(a.severity)),
+    el("td", { text: clock(a.started) }),
+    el("td", { text: until(a.expires) }),
+    el("td", { class: "num", text: a.flows_stopped.toLocaleString() }),
+    el("td", {}, isDesktop ? el("button", { class: "btn quiet small", type: "button", text: "Lift",
+      onclick: async (ev) => {
+        ev.target.disabled = true;
+        try { await api(`/api/containment/${a.id}/lift`, { body: {} }); refresh(); }
+        catch (e) { alert(e.message); ev.target.disabled = false; }
+      } }) : null)));
+  $("containRows").replaceChildren(...rows);
+  $("containEmpty").hidden = rows.length > 0;
+  $("containWrap").hidden = rows.length === 0;
+  $("containAside").textContent = `${box.active.length} active. Simulated ${simulatedAddresses ? "actions and addresses" : "actions"}: ` +
+    "no real traffic is changed.";
+}
+
+function renderDetections(recent) {
+  const rows = recent.slice().reverse().map((r) => el("tr", { class: r.Status === "ATTACK" ? "attack" : "" },
+    el("td", { text: r.Time }),
+    el("td", { text: r.Status === "ATTACK" ? r.Attack : "Benign" }),
+    el("td", {}, sev(r.Severity)),
+    el("td", { class: "addr", text: addr(r["Source IP"], r["Source Port"]) }),
+    el("td", { class: "addr", text: addr(r["Destination IP"], r["Destination Port"]) }),
+    el("td", { class: "num", text: r["Attack Probability"] == null ? "n/a" : r["Attack Probability"].toFixed(4) }),
+    el("td", { text: r.Response }),
+    el("td", r.Contained ? { class: "stopped", text: r.Contained.charAt(0) + r.Contained.slice(1).toLowerCase() } : { text: "" })));
+  $("detectRows").replaceChildren(...rows);
+  $("detectEmpty").hidden = rows.length > 0;
+  $("detectWrap").hidden = rows.length === 0;
+}
+
+function renderDist(id, pairs, colorFor, labelFor) {
+  const target = $(id);
+  if (!pairs.length) { target.replaceChildren(el("p", { class: "muted small", text: "Nothing yet." })); return; }
+  const max = Math.max(...pairs.map((p) => p[1]));
+  target.replaceChildren(...pairs.slice(0, 8).map(([key, count]) => {
+    const fill = el("div", { class: "fill" });
+    fill.style.width = `${(count / max) * 100}%`;
+    if (colorFor) fill.style.setProperty("--c", colorFor(key));
+    return el("div", { class: "bar" },
+      el("span", { class: "label", title: key, text: labelFor ? labelFor(key) : key }),
+      el("div", { class: "track" }, fill),
+      el("span", { class: "num", text: count.toLocaleString() }));
+  }));
+}
+
+function renderSettings(st) {
+  $("modeSim").setAttribute("aria-pressed", String(st.mode === "simulation"));
+  $("modeLive").setAttribute("aria-pressed", String(st.mode === "live"));
+  for (const [id, key, fmt] of [["refresh", "refresh_seconds", (v) => `${v} s`], ["rows", "rows_per_step", (v) => `${v}`],
+                                ["capture", "capture_duration", (v) => `${v} s`]]) {
+    if (!typing($(id))) $(id).value = st[key];
+    $(`${id}Out`).textContent = fmt($(id).value);
+  }
+  const items = st.mode === "live"
+    ? [["TShark", st.tshark_path], ["Interface", st.interface_id], ["CICFlowMeter", st.cicflowmeter_command]]
+    : [["Simulation file", st.simulation_csv]];
+  $("sourceKv").replaceChildren(...items.flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })]));
+}
+
+// ---------- controls ----------
+async function command(path, body) {
+  try { state = await api(path, { body: body || {} }); render(); }
+  catch (e) { alert(e.message); }
+}
+$("startBtn").addEventListener("click", () => command("/api/start"));
+$("stopBtn").addEventListener("click", () => command("/api/stop"));
+$("clearBtn").addEventListener("click", () => {
+  if (confirm("Clear the detection log and lift all simulated containment?")) command("/api/clear");
+});
+$("modeSim").addEventListener("click", () => command("/api/settings", { mode: "simulation" }));
+$("modeLive").addEventListener("click", () => command("/api/settings", { mode: "live" }));
+for (const [id, key, fmt] of [["refresh", "refresh_seconds", (v) => `${v} s`], ["rows", "rows_per_step", (v) => v],
+                              ["capture", "capture_duration", (v) => `${v} s`]]) {
+  $(id).addEventListener("input", () => { $(`${id}Out`).textContent = fmt($(id).value); });
+  $(id).addEventListener("change", () => command("/api/settings", { [key]: Number($(id).value) }));
+}
+
+// ---------- alerts ----------
+async function loadAlerts(initial) {
+  try {
+    const feed = await api(`/api/notifications?after=${initial ? 0 : alertsLastId}&limit=100`);
+    if (feed.last_id < alertsLastId) { alerts = []; alertsLastId = 0; return loadAlerts(true); }  // agent restarted
+    const incoming = feed.notifications.slice().reverse();
+    if (!initial) incoming.forEach((n) => freshAlertIds.add(n.id));
+    alerts = incoming.concat(alerts).slice(0, 60);
+    alertsLastId = feed.last_id;
+    renderAlerts();
+    if (!initial) setTimeout(() => { incoming.forEach((n) => freshAlertIds.delete(n.id)); renderAlerts(); }, 4000);
+  } catch (e) { /* shown by the state poll */ }
+}
+
+function renderAlerts() {
+  $("alertList").replaceChildren(...alerts.map((n) => el("li", { class: freshAlertIds.has(n.id) ? "fresh" : "" },
+    el("div", { class: "title" }, n.severity && n.severity !== "NONE" ? sev(n.severity) : null,
+       el("span", { text: n.title }), el("span", { class: "when", text: ago(n.time) })),
+    el("div", { class: "text", text: n.body }))));
+  $("alertsEmpty").hidden = alerts.length > 0;
+  $("alertsAside").textContent = alerts.length ? `${plural(alerts.length, "recent alert")}` : "";
+}
+
+async function loadPreferences() {
+  try {
+    const prefs = await api("/api/preferences");
+    $("prefSystem").checked = prefs.system_notifications;
+    $("prefSeverity").value = prefs.notify_min_severity;
+  } catch (e) {}
+}
+$("prefSystem").addEventListener("change", () => api("/api/preferences", { body: { system_notifications: $("prefSystem").checked } }).catch((e) => alert(e.message)));
+$("prefSeverity").addEventListener("change", () => api("/api/preferences", { body: { notify_min_severity: $("prefSeverity").value } }).catch((e) => alert(e.message)));
+
+// ---------- devices ----------
+async function refreshDevices() {
+  if (connection?.role !== "desktop") {
+    $("deviceList").replaceChildren(el("li", {}, el("span", { class: "muted", text: "Only a desktop can manage devices." })));
+    $("pairPhoneBtn").hidden = true;
+    return;
+  }
+  try {
+    const { devices } = await api("/api/devices");
+    $("devicesAside").textContent = `${devices.filter((d) => d.online).length} online`;
+    $("deviceList").replaceChildren(...devices.map((d) => {
+      const self = d.device_id === connection.device_id;
+      const seen = d.online ? `Online${d.ip ? ` from ${d.ip}` : ""}` :
+        d.last_seen_seconds != null ? `Last seen ${ago(Date.now() / 1000 - d.last_seen_seconds)}` : "Not seen since the agent started";
+      return el("li", {},
+        el("span", { class: `dot ${d.online ? "on" : ""}` }),
+        el("span", { class: "who" }, el("strong", { text: self ? `${d.name} (this computer)` : d.name }),
+           el("span", { class: "muted small", text: `${d.role === "phone" ? "Phone" : "Desktop"}. ${seen}` })),
+        self ? null : el("button", { class: "btn quiet small", type: "button", text: "Unlink", onclick: async () => {
+          if (!confirm(`Unlink ${d.name}? It will need a new pairing code to connect again.`)) return;
+          try { await api(`/api/devices/${d.device_id}`, { method: "DELETE" }); refreshDevices(); }
+          catch (e) { alert(e.message); }
+        } }));
+    }));
+  } catch (e) { /* offline: keep the last list */ }
+}
+
+let expiryTimer = null;
+$("pairPhoneBtn").addEventListener("click", async () => {
+  try {
+    const pair = await api("/api/pair", { body: { role: "phone" } });
+    $("phoneQr").src = pair.qr;  // a data: image, which cannot run scripts
+    $("phoneCode").textContent = pair.code;
+    const ends = Date.now() + pair.expires_in * 1000;
+    const tick = () => {
+      const left = Math.max(0, Math.round((ends - Date.now()) / 1000));
+      $("phoneExpires").textContent = left ? `Expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "This code has expired. Close and make a new one.";
+    };
+    tick(); clearInterval(expiryTimer); expiryTimer = setInterval(tick, 1000);
+    $("phoneDialog").showModal();
+  } catch (e) { alert(e.message); }
+});
+$("closeDialogBtn").addEventListener("click", () => { $("phoneDialog").close(); clearInterval(expiryTimer); refreshDevices(); });
+$("copyCodeBtn").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("phoneCode").textContent); $("copyCodeBtn").textContent = "Copied"; }
+  catch (e) { $("copyCodeBtn").textContent = "Copy failed"; }
+  setTimeout(() => { $("copyCodeBtn").textContent = "Copy code"; }, 1500);
+});
+$("unpairBtn").addEventListener("click", async () => {
+  if (!confirm("Unpair this computer from the server? You will need a new desktop pairing code from the agent.")) return;
+  try { await api("/api/connection", { method: "DELETE" }); showPairing(); } catch (e) { alert(e.message); }
+});
+
+// ---------- download and model details ----------
+$("downloadBtn").addEventListener("click", async () => {
+  try {
+    const res = await api("/api/log.csv", { raw: true });
+    const url = URL.createObjectURL(await res.blob());
+    const link = el("a", { href: url, download: "attack_log.csv" });
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (e) { alert(e.message); }
+});
+
+$("modelDetails").addEventListener("toggle", async () => {
+  if (!$("modelDetails").open) return;
+  try {
+    const info = await api("/api/model");
+    $("modelKv").replaceChildren(...[
+      ["Binary model", info.binary_model], ["Attack model", info.multi_model], ["Scaler", info.scaler],
+      ["Expected features", String(info.feature_count)], ["Feature medians loaded", info.medians_loaded ? "Yes" : "No"],
+    ].flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })]));
+    $("featureList").replaceChildren(...info.feature_columns.map((f) => el("li", { text: f })));
+  } catch (e) { $("modelKv").replaceChildren(el("dd", { text: e.message })); }
+});
+$("showFeatures").addEventListener("change", () => { $("featureList").hidden = !$("showFeatures").checked; });
+
+// ---------- start ----------
+(async function start() {
+  if (!token) {
+    $("pairScreen").hidden = false;
+    $("pairScreen").replaceChildren(el("h2", { text: "Open LINDEF from the desktop app" }),
+      el("p", { text: "This page needs the link the LINDEF desktop app opens. Close it and start the app again." }));
+    return;
+  }
+  try {
+    connection = await api("/api/connection");
+  } catch (e) {
+    $("pairScreen").hidden = false;
+    $("pairError").textContent = e.message;
+    return;
+  }
+  loadPreferences();
+  connection.paired ? showDashboard() : showPairing();
+})();
+</script>
 </body>
 </html>

@@ -2,8 +2,8 @@
 LINDEF detection engine.
 
 Loads the trained models, turns simulation or live traffic into flow
-features, and classifies each flow. There is no UI code here; server.py
-drives this module and the desktop/phone frontend displays the results.
+features, and classifies each flow. There is no UI or network code here;
+agent.py runs this module on the server being defended.
 
 Two input sources are supported:
 1. Simulation: rows from an existing CSV such as simulation_test.csv.
@@ -142,6 +142,16 @@ SEVERITY_MAP = {
 }
 
 INVALID_ATTACK_OUTPUTS = {"0", "1", 0, 1, "normal", "benign", "NORMAL", "BENIGN"}
+
+# Where each flow came from, so a detection can name the address behind it.
+# These columns are read for the record only; they are never model features.
+# Names cover CICFlowMeter (new and old), CIC-IDS2017, and UNSW-NB15 exports.
+ENDPOINT_COLUMNS = {
+    "Source IP": ("Src IP", "Source IP", "srcip"),
+    "Source Port": ("Src Port", "Source Port", "sport"),
+    "Destination IP": ("Dst IP", "Destination IP", "dstip"),
+    "Destination Port": ("Dst Port", "Destination Port", "dsport"),
+}
 
 # -----------------------------------------------------------------------------
 # Model loading
@@ -341,6 +351,27 @@ def run_cicflowmeter(cicflowmeter_command: str, pcap_path: Path) -> Path:
 # Prediction logic
 # -----------------------------------------------------------------------------
 
+def flow_endpoints(raw_df: pd.DataFrame) -> dict:
+    """Return {"Source IP": [...], ...} for each flow; None where unknown."""
+    columns = {str(col).strip(): col for col in raw_df.columns}
+    endpoints = {}
+    for name, candidates in ENDPOINT_COLUMNS.items():
+        source = next((columns[c] for c in candidates if c in columns), None)
+        if source is None:
+            endpoints[name] = [None] * len(raw_df)
+            continue
+        values = []
+        for value in raw_df[source]:
+            if pd.isna(value):
+                values.append(None)
+            elif isinstance(value, float) and value.is_integer():
+                values.append(str(int(value)))  # ports often load as 80.0
+            else:
+                values.append(str(value).strip())
+        endpoints[name] = values
+    return endpoints
+
+
 def classify_flows(raw_df: pd.DataFrame, models: dict) -> list[dict]:
     """Align features, scale them, and classify each flow into a log record."""
     if raw_df.empty:
@@ -365,31 +396,34 @@ def classify_flows(raw_df: pd.DataFrame, models: dict) -> list[dict]:
 
     rows = []
     timestamp = datetime.now().strftime("%H:%M:%S")
+    endpoints = flow_endpoints(raw_df)
 
     for i, attack in enumerate(attacks):
-        # None (not NaN) so the record stays valid JSON for the frontend.
+        # None (not NaN) so the record stays valid JSON for the clients.
         attack_probability = float(binary_probs[i]) if binary_probs is not None else None
 
         # If the multi-class model returns a normal/invalid class, treat it as
         # benign to avoid fake attack labels in the dashboard.
         if attack in INVALID_ATTACK_OUTPUTS:
-            rows.append({
+            row = {
                 "Time": timestamp,
                 "Status": "BENIGN",
                 "Attack": "normal",
                 "Attack Probability": attack_probability,
                 "Severity": "NONE",
                 "Response": "ALLOW",
-            })
-            continue
-
-        rows.append({
-            "Time": timestamp,
-            "Status": "ATTACK",
-            "Attack": attack,
-            "Attack Probability": attack_probability,
-            "Severity": SEVERITY_MAP.get(attack, "UNKNOWN"),
-            "Response": ATTACK_TO_ACTION.get(attack, "MONITOR"),
-        })
+            }
+        else:
+            row = {
+                "Time": timestamp,
+                "Status": "ATTACK",
+                "Attack": attack,
+                "Attack Probability": attack_probability,
+                "Severity": SEVERITY_MAP.get(attack, "UNKNOWN"),
+                "Response": ATTACK_TO_ACTION.get(attack, "MONITOR"),
+            }
+        for name, values in endpoints.items():
+            row[name] = values[i]
+        rows.append(row)
 
     return rows

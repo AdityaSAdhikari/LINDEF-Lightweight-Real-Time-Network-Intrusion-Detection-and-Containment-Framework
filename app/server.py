@@ -1,22 +1,26 @@
 """
-LINDEF desktop app: local HTTP API, detection loop, and native window.
+LINDEF desktop app: native window plus a secure link to the LINDEF agent.
 
-    python app/server.py              # opens the desktop window
-    python app/server.py --headless   # server only; prints desktop and phone links
+    python app/server.py                            # opens the desktop window
+    python app/server.py --pair 'lindef://...'      # pair with an agent from the terminal
+    python app/server.py --headless                 # no window; prints the local URL
 
-The desktop window and any paired phone load the same web UI (web/index.html)
-from this server. A phone on the same Wi-Fi joins by scanning the pairing QR
-code shown on the desktop. Every /api request must carry the pairing token,
-and only the desktop (loopback) can change traffic sources or see the pairing
-code. Full API contract: docs/desktop_app_spec.md.
+The agent (agent.py) runs on the server being defended. This app pairs with
+it once, using the code the agent prints, keeps its device token in a private
+config file, and relays the window's requests to the agent over pinned HTTPS.
+The relay exists only because a web view cannot pin certificates itself.
+Phones connect to the agent directly, not through this app.
+Full API contract: docs/desktop_app_spec.md.
 """
 
 import argparse
 import hmac
-import ipaddress
 import json
+import re
 import secrets
+import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -24,269 +28,178 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-import pandas as pd
-import segno
-
-import engine
+import secure
 
 INDEX_HTML = Path(__file__).resolve().parent / "web" / "index.html"
-TOKEN = secrets.token_urlsafe(24)  # ponytail: new token per launch; persist it if re-pairing gets annoying
+ICON_PNG = Path(__file__).resolve().parent / "web" / "icon.png"
+DEFAULT_DATA_DIR = "~/.lindef/desktop"
+LOCAL_TOKEN = secrets.token_urlsafe(24)  # per launch; guards the relay from other local programs and websites
+AGENT_PATH = re.compile(r"^[a-z0-9/._-]+$")
 
-MAX_LOGS = 500          # session log cap, same as the original dashboard
-RECENT_ROWS = 50        # rows shown in the Recent Detections table
-DEVICE_TIMEOUT = 30     # seconds before a phone counts as disconnected
-
-DEFAULT_SETTINGS = {
-    "mode": "simulation",  # "simulation" or "live"
-    "refresh_seconds": 2.0,
-    "rows_per_step": 10,
-    "simulation_csv": str(engine.DEFAULT_SIMULATION_CSV),
-    "tshark_path": "tshark",
-    "interface_id": "1",
-    "capture_duration": 5,
-    "cicflowmeter_command": 'CICFlowMeter.bat "{input}" "{output}"',
-}
-
-# (min, max, type) for numeric settings; values outside are clamped.
-NUMERIC_LIMITS = {
-    "refresh_seconds": (0.5, 10.0, float),
-    "rows_per_step": (1, 100, int),
-    "capture_duration": (2, 20, int),
-}
-
-# Settings that decide where traffic comes from. They feed shell commands and
-# file paths, so only the desktop may change them, never a phone.
-DESKTOP_ONLY_SETTINGS = {"mode", "simulation_csv", "tshark_path", "interface_id", "cicflowmeter_command"}
+SEVERITY_RANK = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "UNKNOWN": 3, "CRITICAL": 4}
+DEFAULT_PREFERENCES = {"system_notifications": True, "notify_min_severity": "HIGH"}
+NOTIFY_POLL_SECONDS = 5
+MAX_POPUPS_PER_POLL = 3  # beyond this, one summary notification instead of a flood
 
 
-def value_counts(series: pd.Series) -> list:
-    """Return [[label, count], ...] sorted by count, ready for JSON."""
-    return [[str(k), int(v)] for k, v in series.value_counts().items()]
+def show_system_notification(title: str, body: str):
+    """Pop a desktop notification. Text goes in as arguments, never as script code."""
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["osascript", "-e", "on run argv",
+                            "-e", "display notification (item 2 of argv) with title (item 1 of argv)",
+                            "-e", "end run", title, body], capture_output=True, timeout=5)
+        elif shutil.which("notify-send"):
+            subprocess.run(["notify-send", "--app-name=LINDEF", title, body], capture_output=True, timeout=5)
+        # ponytail: Windows shows alerts in the app window only; add a toast library if that matters
+    except (OSError, subprocess.SubprocessError):
+        pass  # a missing notifier must never take the app down
 
 
-class Monitor:
-    """Owns the detection loop and every piece of state the UI reads."""
+class LinkError(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
 
-    def __init__(self):
+
+class AgentLink:
+    """This desktop's pairing with one agent, saved in config.json."""
+
+    def __init__(self, data_dir):
+        self.dir = secure.private_dir(data_dir)
+        self.config_path = self.dir / "config.json"
         self.lock = threading.Lock()
-        self.wake = threading.Event()
-        self.running = False
-        self.logs = []
-        self.simulation_idx = 0
-        self.epoch = 0  # bumped by clear() so a batch already in flight is dropped
-        self.last_error = ""
-        self.settings = dict(DEFAULT_SETTINGS)
-        self.devices = {}  # phone ip -> {"seen": epoch seconds, "agent": user agent}
-        self.sim_cache = (None, None, None)  # (path, mtime, DataFrame)
+        config = secure.read_json(self.config_path, {})
+        self.agent = config.get("agent")
+        self.preferences = {**DEFAULT_PREFERENCES, **config.get("preferences", {})}
 
-        self.missing_models = engine.missing_model_files()
-        self.models = None
-        if not self.missing_models:
-            self.models = engine.load_models()
+    def save(self):
+        """Write the pairing and preferences. Call while holding self.lock."""
+        secure.write_json(self.config_path, {"agent": self.agent, "preferences": self.preferences})
 
-    # ----- detection loop -----------------------------------------------------
-
-    def loop(self):
-        while True:
-            if self.running:
-                epoch = self.epoch
-                try:
-                    self.append(engine.classify_flows(self.next_batch(epoch), self.models), epoch)
-                    self.last_error = ""
-                except Exception as exc:
-                    self.last_error = str(exc) or type(exc).__name__
-            self.wake.wait(self.settings_copy()["refresh_seconds"])
-            self.wake.clear()
-
-    def settings_copy(self) -> dict:
-        with self.lock:
-            return dict(self.settings)
-
-    def next_batch(self, epoch: int) -> pd.DataFrame:
-        """Read the next chunk of flows from the active traffic source."""
-        s = self.settings_copy()
-
-        if s["mode"] == "live":
-            pcap_path = engine.capture_pcap(s["tshark_path"], s["interface_id"], s["capture_duration"])
-            csv_path = engine.run_cicflowmeter(s["cicflowmeter_command"], pcap_path)
-            try:
-                return pd.read_csv(csv_path)
-            except pd.errors.EmptyDataError:
-                return pd.DataFrame()  # quiet network: no flows in this capture
-            finally:
-                # The CSV is derived from the pcap (which is kept). Deleting it stops
-                # the "newest CSV" fallback from re-reading the same flows next cycle.
-                csv_path.unlink(missing_ok=True)
-
-        raw_df = self.simulation_df(Path(s["simulation_csv"]))
-        start = self.simulation_idx
-        end = start + s["rows_per_step"]
-
-        if end <= len(raw_df):
-            batch_df = raw_df.iloc[start:end]
-        else:
-            # Wrap around to keep the demo running.
-            batch_df = pd.concat([raw_df.iloc[start:], raw_df.iloc[: end % len(raw_df)]], ignore_index=True)
-
-        with self.lock:
-            if epoch == self.epoch:
-                self.simulation_idx = end % len(raw_df)
-        return batch_df
-
-    def simulation_df(self, path: Path) -> pd.DataFrame:
-        """Load the simulation CSV, re-reading only when the file changes."""
-        if not path.exists():
-            raise RuntimeError(f"Simulation CSV not found: {path}")
-        mtime = path.stat().st_mtime
-        cached_path, cached_mtime, cached_df = self.sim_cache
-        if cached_path != path or cached_mtime != mtime:
-            cached_df = pd.read_csv(path)
-            self.sim_cache = (path, mtime, cached_df)
-        if cached_df.empty:
-            raise RuntimeError("Simulation CSV is empty.")
-        return cached_df
-
-    def append(self, rows: list, epoch: int):
-        """Add new detections to the session log and save a copy to disk."""
-        with self.lock:
-            if not rows or epoch != self.epoch:
-                return  # nothing new, or Clear Logs ran while this batch was in flight
-            self.logs = (self.logs + rows)[-MAX_LOGS:]
-            logs = list(self.logs)
-        pd.DataFrame(logs).to_csv(engine.LOG_FILE, index=False)
-
-    # ----- commands -------------------------------------------------------------
-
-    def start(self):
-        if self.models is None:
-            raise ValueError("Models are not loaded. Add the model files and restart LINDEF.")
-        self.running = True
-        self.wake.set()  # run the first step now instead of after one refresh period
-
-    def stop(self):
-        self.running = False
-
-    def clear(self):
-        with self.lock:
-            self.logs = []
-            self.simulation_idx = 0
-            self.epoch += 1
-        engine.LOG_FILE.unlink(missing_ok=True)
-
-    def update_settings(self, changes: dict, from_desktop: bool):
-        """Validate and apply setting changes. Raises ValueError/PermissionError."""
+    def set_preferences(self, changes: dict) -> dict:
         clean = {}
         for key, value in changes.items():
-            if key not in DEFAULT_SETTINGS:
-                raise ValueError(f"Unknown setting: {key}")
-            if key in DESKTOP_ONLY_SETTINGS and not from_desktop:
-                raise PermissionError(f"'{key}' can only be changed from the desktop app.")
-            if key in NUMERIC_LIMITS:
-                low, high, cast = NUMERIC_LIMITS[key]
-                try:
-                    clean[key] = min(high, max(low, cast(value)))
-                except (TypeError, ValueError):
-                    raise ValueError(f"'{key}' must be a number.")
-            elif key == "mode":
-                if value not in ("simulation", "live"):
-                    raise ValueError("mode must be 'simulation' or 'live'.")
+            if key == "system_notifications":
+                clean[key] = bool(value)
+            elif key == "notify_min_severity" and value in SEVERITY_RANK:
                 clean[key] = value
             else:
-                clean[key] = str(value).strip()[:1000]
+                raise LinkError(400, f"Unknown or invalid preference: {key}")
         with self.lock:
-            self.settings.update(clean)
-        self.wake.set()  # pick up a new refresh speed right away
+            self.preferences.update(clean)
+            self.save()
+        return dict(self.preferences)
 
-    # ----- read-only views -------------------------------------------------------
+    def request(self, method: str, path: str, body: bytes | None = None, agent=None):
+        """Send one request to the agent. Returns (status, body, headers)."""
+        agent = agent or self.agent
+        if not agent:
+            raise LinkError(503, "Not paired with a LINDEF server yet. Paste the pairing code the agent printed.")
+        headers = {"Content-Type": "application/json"}
+        if "token" in agent:
+            headers["Authorization"] = f"Bearer {agent['token']}"
+        try:
+            status, data, response_headers = secure.pinned_request(
+                agent["host"], agent["port"], agent["fp"], method, path, body, headers)
+        except secure.CertificateMismatch as exc:
+            raise LinkError(502, f"{exc} If the agent was reset, pair again; otherwise someone may be "
+                                 f"intercepting the connection.")
+        except OSError as exc:
+            raise LinkError(502, f"Can't reach the LINDEF server at {agent['host']}:{agent['port']} ({exc}). "
+                                 f"Check that the agent is running and this computer can reach it.")
+        if status == 401 and "token" in agent:
+            raise LinkError(502, "The LINDEF server no longer recognizes this desktop. Pair again.")
+        return status, data, response_headers
 
-    def seen(self, ip: str, agent: str):
+    def pair(self, code: str, name: str) -> dict:
+        try:
+            info = secure.parse_pairing_code(code)
+        except ValueError as exc:
+            raise LinkError(400, str(exc))
+        if "pair" not in info:
+            raise LinkError(400, "That code has no pairing secret. Copy the whole code the agent printed.")
+        target = {"host": info["host"], "port": info["port"], "fp": info["fp"]}
+        body = json.dumps({"code": info["pair"], "name": name}).encode()
+        status, data, _ = self.request("POST", "/v1/pair/claim", body, agent=target)
+        result = json.loads(data)
+        if status != 200:
+            raise LinkError(status, result.get("error", "Pairing failed."))
         with self.lock:
-            self.devices[ip] = {"seen": time.time(), "agent": agent}
+            self.agent = {**target, "token": result["token"], "device_id": result["device_id"],
+                          "role": result["role"], "name": name}
+            self.save()
+        return self.status()
 
-    def state(self, from_desktop: bool) -> dict:
-        """Everything the dashboard needs for one refresh."""
+    def forget(self):
+        """Unpair: remove this desktop from the agent (if reachable) and from the config."""
+        if self.agent:
+            try:
+                self.request("DELETE", f"/v1/devices/{self.agent['device_id']}")
+            except LinkError:
+                pass  # offline agent: forget locally anyway; it can be revoked from another desktop
         with self.lock:
-            logs_df = pd.DataFrame(self.logs)
-            devices = [
-                {"ip": ip, "agent": d["agent"], "seconds_ago": round(time.time() - d["seen"])}
-                for ip, d in self.devices.items()
-                if time.time() - d["seen"] < DEVICE_TIMEOUT
-            ]
+            self.agent = None
+            self.save()
 
-        state = {
-            "running": self.running,
-            "error": self.last_error,
-            "settings": self.settings_copy(),
-            "desktop": from_desktop,
-            "models": {"loaded": self.models is not None, "missing": self.missing_models},
-            "metrics": {"total": 0, "attacks": 0, "benign": 0, "latest": "Waiting"},
-            "recent": [],
-            "charts": {"status": [], "severity": [], "attacks": [], "responses": []},
-        }
-        if from_desktop:
-            state["devices"] = devices
-
-        if logs_df.empty:
-            return state
-
-        state["metrics"] = {
-            "total": len(logs_df),
-            "attacks": int((logs_df["Status"] == "ATTACK").sum()),
-            "benign": int((logs_df["Status"] == "BENIGN").sum()),
-            "latest": logs_df.iloc[-1]["Status"],
-        }
-        recent = logs_df.tail(RECENT_ROWS).astype(object)
-        state["recent"] = recent.where(recent.notna(), None).to_dict("records")
-        state["charts"] = {
-            "status": value_counts(logs_df["Status"]),
-            "severity": value_counts(logs_df["Severity"]),
-            "attacks": value_counts(logs_df.loc[logs_df["Attack"] != "normal", "Attack"]),
-            "responses": value_counts(logs_df["Response"]),
-        }
-        return state
-
-    def model_info(self) -> dict:
-        info = {
-            "binary_model": str(engine.BINARY_MODEL_PATH),
-            "multi_model": str(engine.MULTI_MODEL_PATH),
-            "scaler": str(engine.SCALER_PATH),
-            "loaded": self.models is not None,
-            "missing": self.missing_models,
-            "feature_count": 0,
-            "medians_loaded": False,
-            "feature_columns": [],
-        }
-        if self.models:
-            info["feature_count"] = len(self.models["feature_columns"])
-            info["medians_loaded"] = self.models["feature_medians"] is not None
-            info["feature_columns"] = self.models["feature_columns"]
-        return info
-
-    def log_csv(self) -> str:
-        with self.lock:
-            return pd.DataFrame(self.logs).to_csv(index=False)
+    def status(self) -> dict:
+        if not self.agent:
+            return {"paired": False}
+        status = {"paired": True, "host": self.agent["host"], "port": self.agent["port"],
+                  "device_id": self.agent["device_id"], "role": self.agent["role"], "name": self.agent["name"]}
+        try:
+            _, data, _ = self.request("GET", "/v1/health")
+            status.update(reachable=True, health=json.loads(data))
+        except LinkError as exc:
+            status.update(reachable=False, error=str(exc))
+        return status
 
 
-def lan_ip() -> str:
-    """Best guess at this machine's Wi-Fi/LAN address (no packets are sent)."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))
-            return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
+def watch_notifications(link: AgentLink):
+    """Turn new agent notifications into desktop notifications, filtered by preference."""
+    last_id, last_agent = None, None
+    while True:
+        time.sleep(NOTIFY_POLL_SECONDS)
+        if not link.agent:
+            continue
+        try:
+            if link.agent is not last_agent or last_id is None:
+                _, data, _ = link.request("GET", "/v1/notifications?after=0&limit=1")
+                last_id, last_agent = json.loads(data)["last_id"], link.agent  # start from now, skip backlog
+                continue
+            status, data, _ = link.request("GET", f"/v1/notifications?after={last_id}&limit=50")
+            if status != 200:
+                continue
+            feed = json.loads(data)
+            if feed["last_id"] < last_id:   # agent restarted: its IDs began again
+                last_id = feed["last_id"]
+                continue
+            notes = feed["notifications"]
+            if notes:
+                last_id = notes[-1]["id"]
+            prefs = dict(link.preferences)
+            minimum = SEVERITY_RANK[prefs["notify_min_severity"]]
+            wanted = [n for n in notes
+                      if n["kind"] == "error" or SEVERITY_RANK.get(n["severity"], 3) >= minimum]
+            if not prefs["system_notifications"] or not wanted:
+                continue
+            if len(wanted) > MAX_POPUPS_PER_POLL:
+                show_system_notification(f"LINDEF: {len(wanted)} new alerts",
+                                         "; ".join(n["title"] for n in wanted[:4]) + " ...")
+            else:
+                for n in wanted:
+                    show_system_notification(f"LINDEF: {n['title']}", n["body"])
+        except (LinkError, ValueError, KeyError):
+            continue  # agent offline or mid-restart: try again next poll
 
 
-def make_handler(monitor: Monitor, port: int):
-    phone_url = f"http://{lan_ip()}:{port}/#t={TOKEN}"
+def make_handler(link: AgentLink):
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "LINDEF"
+        server_version = "LINDEF-desktop"
 
         def log_message(self, *args):
-            pass  # keep the terminal quiet; errors surface in the UI
-
-        # ----- helpers --------------------------------------------------------
+            pass
 
         def send(self, status: int, body: bytes, content_type: str, extra_headers=None):
             self.send_response(status)
@@ -302,100 +215,106 @@ def make_handler(monitor: Monitor, port: int):
         def send_json(self, status: int, payload):
             self.send(status, json.dumps(payload, allow_nan=False).encode(), "application/json")
 
-        def from_desktop(self) -> bool:
-            return ipaddress.ip_address(self.client_address[0]).is_loopback
-
         def authorized(self) -> bool:
-            token = self.headers.get("X-Lindef-Token", "")
-            if not hmac.compare_digest(token.encode(), TOKEN.encode()):
-                self.send_json(401, {"error": "Not paired. Scan the QR code in the desktop app."})
+            auth = self.headers.get("Authorization", "")
+            if not hmac.compare_digest(auth.encode(), f"Bearer {LOCAL_TOKEN}".encode()):
+                self.send_json(401, {"error": "Missing or wrong local token. Reopen the LINDEF window."})
                 return False
-            if not self.from_desktop():
-                monitor.seen(self.client_address[0], self.headers.get("User-Agent", "")[:200])
             return True
 
-        def read_json(self) -> dict:
-            length = min(int(self.headers.get("Content-Length") or 0), 64_000)
-            if not length:
-                return {}
-            data = json.loads(self.rfile.read(length))
-            if not isinstance(data, dict):
-                raise ValueError("Request body must be a JSON object.")
-            return data
-
-        # ----- routes ---------------------------------------------------------
+        def body(self) -> bytes:
+            return self.raw_body
 
         def do_GET(self):
-            path = urlparse(self.path).path
-
-            if path in ("/", "/index.html"):
-                return self.send(200, INDEX_HTML.read_bytes(), "text/html; charset=utf-8")
-            if not path.startswith("/api/"):
-                return self.send_json(404, {"error": "Not found."})
-            if not self.authorized():
-                return
-
-            if path == "/api/state":
-                return self.send_json(200, monitor.state(self.from_desktop()))
-            if path == "/api/model":
-                return self.send_json(200, monitor.model_info())
-            if path == "/api/log.csv":
-                return self.send(200, monitor.log_csv().encode(), "text/csv; charset=utf-8",
-                                 {"Content-Disposition": 'attachment; filename="attack_log.csv"'})
-            if path == "/api/pair":
-                if not self.from_desktop():
-                    return self.send_json(403, {"error": "Pairing is only available on the desktop."})
-                qr = segno.make(phone_url, error="m")
-                return self.send_json(200, {"url": phone_url, "svg": qr.svg_inline(scale=5, border=2)})
-            return self.send_json(404, {"error": "Not found."})
+            self.route("GET")
 
         def do_POST(self):
-            path = urlparse(self.path).path
-            if not path.startswith("/api/"):
+            self.route("POST")
+
+        def do_DELETE(self):
+            self.route("DELETE")
+
+        def route(self, method: str):
+            parts = urlparse(self.path)
+            # Read the body before any reply, even a refusal (see agent.py).
+            try:
+                length = max(0, int(self.headers.get("Content-Length") or 0))
+            except ValueError:
+                return self.send_json(400, {"error": "Bad Content-Length."})
+            if length > 64_000:
+                self.close_connection = True
+                return self.send_json(413, {"error": "Request body too large."})
+            self.raw_body = self.rfile.read(length)
+            if method == "GET" and parts.path in ("/", "/index.html"):
+                return self.send(200, INDEX_HTML.read_bytes(), "text/html; charset=utf-8")
+            if method == "GET" and parts.path == "/icon.png":
+                return self.send(200, ICON_PNG.read_bytes(), "image/png")
+            if not parts.path.startswith("/api/"):
                 return self.send_json(404, {"error": "Not found."})
             if not self.authorized():
                 return
-            try:
-                if path == "/api/start":
-                    monitor.start()
-                elif path == "/api/stop":
-                    monitor.stop()
-                elif path == "/api/clear":
-                    monitor.clear()
-                elif path == "/api/settings":
-                    monitor.update_settings(self.read_json(), self.from_desktop())
-                else:
-                    return self.send_json(404, {"error": "Not found."})
-            except PermissionError as exc:
-                return self.send_json(403, {"error": str(exc)})
-            except ValueError as exc:  # json.JSONDecodeError is a ValueError too
-                return self.send_json(400, {"error": str(exc)})
-            return self.send_json(200, monitor.state(self.from_desktop()))
 
-    return Handler, phone_url
+            try:
+                if parts.path == "/api/connection":
+                    if method == "GET":
+                        return self.send_json(200, link.status())
+                    if method == "POST":
+                        data = json.loads(self.body() or b"{}")
+                        name = str(data.get("name") or f"{socket.gethostname()} desktop")[:80]
+                        return self.send_json(200, link.pair(data.get("code", ""), name))
+                    if method == "DELETE":
+                        link.forget()
+                        return self.send_json(200, link.status())
+
+                if parts.path == "/api/preferences":
+                    if method == "POST":
+                        return self.send_json(200, link.set_preferences(json.loads(self.body() or b"{}")))
+                    return self.send_json(200, dict(link.preferences))
+
+                # Everything else goes to the agent: /api/state -> /v1/state, and so on.
+                rest = parts.path[len("/api/"):]
+                if not AGENT_PATH.match(rest) or ".." in rest:
+                    return self.send_json(404, {"error": "Not found."})
+                agent_path = f"/v1/{rest}" + (f"?{parts.query}" if parts.query else "")
+                status, data, headers = link.request(method, agent_path, self.body() if method == "POST" else None)
+                passthrough = {k: v for k, v in headers.items() if k.lower() == "content-disposition"}
+                return self.send(status, data, headers.get("Content-Type", "application/json"), passthrough)
+
+            except LinkError as exc:
+                return self.send_json(exc.status, {"error": str(exc)})
+            except ValueError:
+                return self.send_json(400, {"error": "Request body must be JSON."})
+
+    return Handler
 
 
 def main():
     parser = argparse.ArgumentParser(description="LINDEF desktop app")
-    parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--headless", action="store_true", help="run the server without opening a window")
+    parser.add_argument("--port", type=int, default=8765, help="local port for the window (loopback only)")
+    parser.add_argument("--data-dir", default=DEFAULT_DATA_DIR)
+    parser.add_argument("--pair", metavar="CODE", help="pair with an agent using the code it printed")
+    parser.add_argument("--headless", action="store_true", help="run without opening a window")
     args = parser.parse_args()
 
-    monitor = Monitor()
-    handler, phone_url = make_handler(monitor, args.port)
+    link = AgentLink(args.data_dir)
+    if args.pair:
+        try:
+            status = link.pair(args.pair, f"{socket.gethostname()} desktop")
+        except LinkError as exc:
+            sys.exit(f"Pairing failed: {exc}")
+        print(f"Paired with the LINDEF server at {status['host']}:{status['port']} as '{status['name']}'.")
+
     try:
-        # 0.0.0.0 so phones on the same network can reach it; the token guards access.
-        httpd = ThreadingHTTPServer(("0.0.0.0", args.port), handler)
+        # Loopback only: phones talk to the agent directly, never to this app.
+        httpd = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(link))
     except OSError as exc:
-        sys.exit(f"Could not open port {args.port} ({exc}). Try: python app/server.py --port 8766")
+        sys.exit(f"Could not open port {args.port} ({exc}). Try: python app/server.py --port {args.port + 1}")
+    url = f"http://127.0.0.1:{args.port}/#t={LOCAL_TOKEN}"
+    threading.Thread(target=watch_notifications, args=(link,), daemon=True).start()
 
-    threading.Thread(target=monitor.loop, daemon=True).start()
-    desktop_url = f"http://127.0.0.1:{args.port}/#t={TOKEN}"
-
-    if monitor.missing_models:
-        print("Missing model files (the app opens, but detection stays off):")
-        for path in monitor.missing_models:
-            print("  " + path)
+    if not link.agent:
+        print("Not paired with a LINDEF server yet. Start agent.py on the server, then pair with:")
+        print("  python app/server.py --pair 'lindef://...'")
 
     try:
         import webview
@@ -403,12 +322,10 @@ def main():
         webview = None
 
     if args.headless or webview is None:
-        print(f"Desktop: {desktop_url}")
-        print(f"Phone:   {phone_url}")
-        segno.make(phone_url, error="m").terminal(compact=True)
+        print(f"Desktop: {url}")
         if webview is None and not args.headless:
             import webbrowser
-            webbrowser.open(desktop_url)
+            webbrowser.open(url)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
@@ -417,7 +334,7 @@ def main():
 
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     webview.settings["ALLOW_DOWNLOADS"] = True  # lets "Download Detection Log" save the CSV
-    webview.create_window("LINDEF", desktop_url, width=1320, height=880, min_size=(960, 640))
+    webview.create_window("LINDEF", url, width=1320, height=880, min_size=(960, 640))
     webview.start()  # blocks until the window closes; daemon threads exit with it
 
 

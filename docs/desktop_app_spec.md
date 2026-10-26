@@ -1,211 +1,330 @@
-# LINDEF Desktop App — Specification
+# LINDEF Agent, Desktop App, and Phone App: Backend Specification
 
-LINDEF runs as a desktop application on the machine being protected. A phone on
-the same network can pair with it to watch detections live and start or stop
-monitoring. It will replace the earlier Streamlit dashboard, keeping every one of its
-features (see [Feature parity](#feature-parity)). Until the new frontend is
-built, `app/dashboard.py` stays in place and `app/web/index.html` is a placeholder.
-
-## Architecture
+LINDEF has three parts. The **agent** runs on the server being defended: it
+captures traffic, classifies it, and keeps the detection log. The **desktop
+app** and the **native phone app** are both clients of the agent. Each connects
+to the agent directly; neither relays through the other.
 
 ```text
- ┌──────────────────────── Desktop machine ─────────────────────────┐
- │                                                                   │
- │  app/server.py                                                    │
- │  ├── Monitor thread ── engine.py ── models/*.pkl                  │
- │  │     every refresh: read flows -> classify -> append to log     │
- │  │     source: simulation CSV  or  TShark -> CICFlowMeter          │
- │  │                                                                │
- │  ├── HTTP API on 0.0.0.0:8765  (stdlib ThreadingHTTPServer)       │
- │  │                                                                │
- │  └── Native window (pywebview) -> http://127.0.0.1:8765/#t=TOKEN  │
- │                                                                   │
- └───────────────────────────────▲───────────────────────────────────┘
-                                 │  same Wi-Fi / LAN
-                       Phone browser -> http://<lan-ip>:8765/#t=TOKEN
-                       (opened by scanning the pairing QR code)
+                  ┌────────────────────────────────────────┐
+                  │  Defended server                        │
+                  │  app/agent.py  (HTTPS :9443)            │
+                  │   ├─ detection loop ── engine.py        │
+                  │   │    simulation CSV or                │
+                  │   │    TShark -> CICFlowMeter           │
+                  │   ├─ paired devices (devices.json)      │
+                  │   └─ certificate (cert.pem / key.pem)   │
+                  └──────────▲──────────────────▲───────────┘
+                 pinned HTTPS│                  │pinned HTTPS
+                 role=desktop│                  │role=phone
+       ┌─────────────────────┴───────┐   ┌──────┴──────────────────┐
+       │ Desktop computer            │   │ Phone                    │
+       │ app/server.py               │   │ native app               │
+       │  window ── local relay      │   │ (talks to the agent      │
+       │  (127.0.0.1 only)           │   │  directly)               │
+       └─────────────────────────────┘   └──────────────────────────┘
 ```
 
 | File | Role |
 |---|---|
-| `app/engine.py` | Detection engine: model loading, feature alignment, TShark/CICFlowMeter helpers, classification, severity and response mapping. No UI code. |
-| `app/server.py` | HTTP API, detection loop, pairing, and the desktop window launcher. |
-| `app/web/index.html` | The single frontend, served to both the desktop window and phones. |
-| `app/test_server.py` | Backend smoke test with stand-in models. |
+| `app/engine.py` | Detection: model loading, feature alignment, TShark/CICFlowMeter helpers, classification, severity/response mapping, flow source and destination. |
+| `app/agent.py` | The agent: detection loop, device pairing and roles, HTTPS API. |
+| `app/server.py` | The desktop app: native window plus a loopback-only relay that holds the desktop's device token. |
+| `app/secure.py` | Certificates, pinning, pairing codes, the TLS server, and the pinned HTTPS client. |
+| `app/test_backend.py` | End-to-end test of agent, desktop relay, and phone calls. |
+| `app/web/index.html` | Desktop window interface (paper design, optional dark mode). |
+| `ios/` | Native iPhone app (SwiftUI, iOS 17+). Open `ios/LINDEF.xcodeproj` in Xcode. |
 
-One frontend serves both screens. The page reads `desktop` from `/api/state`
-and shows desktop-only controls (traffic source, pairing) only on the desktop.
+`app/dashboard.py` (the original Streamlit dashboard) is unchanged and still
+works on its own.
 
 ## Running
 
 ```bash
 pip install -r requirements.txt
-python app/server.py               # desktop window
-python app/server.py --headless    # server only; prints desktop + phone links and a terminal QR code
-python app/server.py --port 8766   # if 8765 is taken
-python app/test_server.py          # backend smoke test
+
+# On the server being defended
+python app/agent.py                                       # simulation mode
+python app/agent.py --tshark /usr/bin/tshark --interface eth0 \
+    --cicflowmeter 'cicflowmeter -f "{input}" -c "{output}/flows.csv"'
+
+# On the desktop
+python app/server.py --pair 'lindef://...'                # first time: code printed by the agent
+python app/server.py                                      # afterwards
+
+# Tests
+python app/test_backend.py
 ```
 
-If pywebview is not installed, the app opens the desktop UI in the default browser.
-If model files are missing, the app still opens, lists the missing files, and keeps
-detection disabled.
+| Agent flag | Default | Purpose |
+|---|---|---|
+| `--port` | 9443 | HTTPS port |
+| `--bind` | 0.0.0.0 | Listen address |
+| `--advertise` | this machine's LAN IP | Host name or IP put in pairing codes (use the public name if devices reach the server through DNS or a VPN) |
+| `--data-dir` | `~/.lindef/agent` | Certificate, key, and paired devices |
+| `--simulation-csv` | `results/simulation_test.csv` | Simulation source |
+| `--tshark` | `tshark` | TShark executable |
+| `--interface` | `1` | Capture interface (`tshark -D` lists them) |
+| `--cicflowmeter` | `CICFlowMeter.bat "{input}" "{output}"` | CICFlowMeter command |
+| `--pair desktop\|phone` | — | Print a pairing code for that device type on start (repeatable) |
+| `--reset` | — | New certificate and unpair every device |
 
-## Pairing and security model
+Live capture needs permission to capture packets (for example, membership in
+the `wireshark` group on Linux, or running as an administrator on Windows).
 
-LINDEF executes user-configured shell commands (TShark, CICFlowMeter), so the
-network-facing API is treated as a trust boundary.
+| Desktop flag | Default | Purpose |
+|---|---|---|
+| `--pair CODE` | — | Pair with an agent |
+| `--port` | 8765 | Loopback port for the window |
+| `--data-dir` | `~/.lindef/desktop` | Saved pairing (`config.json`) |
+| `--headless` | — | No window; print the local URL |
 
-1. **Pairing token.** A random token (`secrets.token_urlsafe(24)`) is created at each
-   launch. The desktop window and the phone QR code both carry it in the URL
-   *fragment* (`#t=...`), so it is never sent in a request line or stored in server
-   logs. The page moves it into `localStorage` and sends it on every API call as the
-   `X-Lindef-Token` header. Tokens are compared with `hmac.compare_digest`.
-2. **Every `/api/*` route requires the token.** Without it: `401`. The HTML page
-   itself holds no secrets and is served without a token.
-3. **Desktop-only actions.** Requests from loopback (`127.0.0.1`/`::1`) count as the
-   desktop. Only the desktop can:
-   - view the pairing QR code and link (`GET /api/pair`);
-   - change traffic-source settings: `mode`, `simulation_csv`, `tshark_path`,
-     `interface_id`, `cicflowmeter_command` (these feed shell commands and file paths).
+## Security model
 
-   Phones get `403` for these.
-4. **Cross-site requests.** A token in a custom header forces a CORS preflight,
-   which the server never approves, so other websites open on the desktop cannot
-   drive the API.
-5. **Connected devices.** The desktop sees each paired phone (IP, user agent, last
-   seen) for 30 seconds after its latest request.
-6. **Re-pairing.** Restarting the app issues a new token, which disconnects every
-   phone.
+The agent controls packet capture on a production server, so every network
+path is authenticated and encrypted.
 
-Known limits: traffic is plain HTTP on the local network, so someone sniffing the
-same Wi-Fi could read the token. Do not use the phone link on untrusted networks.
+1. **Encryption with pinned certificates.** On first start the agent creates an
+   EC P-256 key and a self-signed certificate (`cert.pem`, `key.pem`, mode 0600).
+   Every pairing code carries the certificate's SHA-256 fingerprint. Clients
+   check the fingerprint **before sending anything** and refuse any other
+   certificate, so an attacker on the network cannot impersonate the agent.
+   There is no certificate authority. The certificate lasts ten years, because
+   with pinning an expiry date adds only breakage. TLS 1.2 is the minimum.
+2. **Pairing codes.** `lindef://HOST:PORT?pair=CODE&fp=FINGERPRINT`. A code is
+   random (128 bits), bound to a role (`desktop` or `phone`), single use, and
+   valid for 10 minutes. The agent prints a desktop code on start until a
+   desktop has been paired. After that, a paired desktop creates phone codes
+   (shown as a QR code). Phones cannot create codes.
+3. **One token per device.** Claiming a code returns a 256-bit device token. The
+   agent stores only its SHA-256 hash, so a copied `devices.json` cannot be used
+   to connect. Each request sends `Authorization: Bearer TOKEN`. A lost phone is
+   unlinked from the desktop without affecting other devices.
+4. **Roles.**
 
-## API
+   | Action | Desktop | Phone |
+   |---|---|---|
+   | View state, detections, log, model details | yes | yes |
+   | Start, Stop, Clear Logs | yes | yes |
+   | Change refresh speed, flows per refresh, capture duration | yes | yes |
+   | Switch simulation / live mode | yes | no |
+   | Create pairing codes, list and unlink devices | yes | no |
+   | Change TShark, CICFlowMeter, interface, simulation CSV | no | no |
 
-All responses are JSON unless noted. All `/api/*` routes need `X-Lindef-Token`.
-Errors return `{"error": "message"}` with status `400` (bad input), `401` (not
-paired), `403` (desktop only), or `404`.
+   Commands and paths that run on the defended server are set only with agent
+   flags, on the server itself. A stolen device token therefore cannot run
+   commands on the server.
+5. **The desktop relay** listens on `127.0.0.1` only and needs a per-launch local
+   token (given to the window in the URL fragment, never sent to the server in a
+   request line). The token sits in a custom header, so browsers block other
+   websites from calling the relay. The relay exists only because a web view
+   cannot pin certificates. Its saved device token is in
+   `~/.lindef/desktop/config.json` (mode 0600).
+6. **Reset.** `python app/agent.py --reset` replaces the certificate and unpairs
+   every device. Clients then refuse to connect (fingerprint mismatch) until they
+   pair again.
 
-| Method | Path | Who | Body | Returns |
+## Agent API (`/v1`)
+
+Base URL: `https://HOST:PORT`. JSON unless noted. Every route except
+`POST /v1/pair/claim` needs a device token. Errors are `{"error": "message"}`
+with `400` (bad input), `401` (not paired / unlinked), `403` (role not
+allowed), `404`, or `413` (body over 64 KB).
+
+| Method | Path | Role | Body | Returns |
 |---|---|---|---|---|
-| GET | `/` | anyone | — | the frontend HTML |
-| GET | `/api/state` | paired | — | [State](#state-object) |
-| POST | `/api/start` | paired | — | State. `400` if models are not loaded. |
-| POST | `/api/stop` | paired | — | State |
-| POST | `/api/clear` | paired | — | State. Empties the session log, resets the simulation position, deletes `attack_log.csv`. |
-| POST | `/api/settings` | paired (some keys desktop only) | partial [Settings](#settings) object | State |
-| GET | `/api/log.csv` | paired | — | `text/csv` session log (download) |
-| GET | `/api/model` | paired | — | model paths, `loaded`, `missing`, `feature_count`, `medians_loaded`, `feature_columns` |
-| GET | `/api/pair` | desktop | — | `{"url": phone link, "svg": QR code SVG}` |
+| POST | `/v1/pair/claim` | none (the code is the credential) | `{"code", "name"}` | `{"device_id", "role", "token"}` |
+| GET | `/v1/health` | any | — | `{"version", "server", "running", "models_loaded", "device_id", "device_name", "role"}` |
+| GET | `/v1/state` | any | — | [State](#state) |
+| GET | `/v1/detections?after=ID&limit=N` | any | — | `{"records": [Detection...], "last_id", "epoch"}`: detections with ID above `after`, oldest first, `limit` 1–500 (default 200) |
+| POST | `/v1/start` | any | — | State. `400` if models are not loaded. |
+| POST | `/v1/stop` | any | — | State |
+| POST | `/v1/clear` | any | — | State. Empties the log and deletes `attack_log.csv`. |
+| POST | `/v1/settings` | any (`mode`: desktop) | partial [Settings](#settings) | State |
+| GET | `/v1/log.csv` | any | — | `text/csv` session log |
+| GET | `/v1/model` | any | — | model paths, `loaded`, `missing`, `feature_count`, `medians_loaded`, `feature_columns` |
+| GET | `/v1/notifications?after=ID&limit=N` | any | — | `{"notifications": [Notification...], "last_id"}`, oldest first, `limit` 1–200 (default 100) |
+| GET | `/v1/containment` | any | — | [Containment](#simulated-containment) summary |
+| POST | `/v1/containment/{id}/lift` | desktop | — | Containment summary plus `"lifted": action`. `404` if not active. |
+| POST | `/v1/pair` | desktop | `{"role": "phone" \| "desktop"}` | `{"code": "lindef://...", "qr": QR code as a data: SVG image, "expires_in": 600}` |
+| GET | `/v1/devices` | desktop | — | `{"devices": [{"device_id", "name", "role", "paired_at", "online", "last_seen_seconds", "ip"}]}` |
+| DELETE | `/v1/devices/{id}` | desktop | — | updated device list |
 
-The frontend polls `GET /api/state` every 1.5 seconds. Polling is chosen over
-WebSockets/SSE because it works on every phone browser and needs no extra server
-code at this refresh rate.
+**Polling.** Apps poll `GET /v1/state` for the dashboard (every 1–2 seconds
+while visible) and `GET /v1/detections?after=<last ID seen>` to get only new
+detections, for example to raise in-app alerts for new attacks. Detection IDs
+increase and are never reused, even after Clear Logs. `epoch` changes when the
+log is cleared, so an app knows to drop its local copy.
+
+### Detection
+
+```json
+{ "ID": 1042, "Time": "12:01:05", "Status": "ATTACK", "Attack": "neptune",
+  "Attack Probability": 0.987, "Severity": "HIGH", "Response": "BLOCK_IP",
+  "Source IP": "203.0.113.7", "Source Port": "51544",
+  "Destination IP": "10.0.0.5", "Destination Port": "443", "Contained": null }
+```
+
+- `Status`: `ATTACK` or `BENIGN`. `Severity`: `NONE`, `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`, or `UNKNOWN`.
+- `Response` (recommended containment): `ALLOW`, `BLOCK_IP`, `THROTTLE_IP`, `ISOLATE_HOST`, or `MONITOR`.
+- `Attack Probability` is `null` if the binary model has no `predict_proba`.
+- Source and destination come from CICFlowMeter, CIC-IDS2017, or UNSW-NB15 columns when present. They are never used as model features. In simulation mode, when the CSV has no address columns, they are simulated (see below); in live mode without them they are `null`.
+- `Contained`: `BLOCKED`, `THROTTLED`, or `ISOLATED` when the simulated firewall would have stopped this flow, otherwise `null`.
 
 ### Settings
 
-| Key | Type | Default | Limits | Desktop only |
+| Key | Type | Default | Limits | Changed by |
 |---|---|---|---|---|
-| `mode` | `"simulation"` \| `"live"` | `"simulation"` | — | yes |
-| `refresh_seconds` | number | 2.0 | 0.5 – 10 (clamped) | no |
-| `rows_per_step` | integer | 10 | 1 – 100 (clamped) | no |
-| `simulation_csv` | string | `results/simulation_test.csv` | ≤ 1000 chars | yes |
-| `tshark_path` | string | `tshark` | ≤ 1000 chars | yes |
-| `interface_id` | string | `1` | ≤ 1000 chars | yes |
-| `capture_duration` | integer seconds | 5 | 2 – 20 (clamped) | no |
-| `cicflowmeter_command` | string with `{input}` / `{output}` | `CICFlowMeter.bat "{input}" "{output}"` | ≤ 1000 chars | yes |
+| `mode` | `"simulation"` \| `"live"` | `simulation` | — | desktop |
+| `refresh_seconds` | number | 2.0 | 0.5–10, clamped | desktop, phone |
+| `rows_per_step` | integer | 10 | 1–100, clamped | desktop, phone |
+| `capture_duration` | integer seconds | 5 | 2–20, clamped | desktop, phone |
+| `simulation_csv`, `tshark_path`, `interface_id`, `cicflowmeter_command` | string | from flags | — | agent flags only (`403` over the API) |
 
-Unknown keys or non-numeric numbers return `400`.
+All settings, including the flag-only ones, are returned in State so apps can show them.
 
-### State object
+### State
 
 ```json
 {
   "running": true,
   "error": "",
-  "desktop": true,
-  "settings": { "...": "see Settings" },
+  "settings": { "mode": "live", "refresh_seconds": 2.0, "rows_per_step": 10, "capture_duration": 5,
+                "simulation_csv": "...", "tshark_path": "tshark", "interface_id": "eth0",
+                "cicflowmeter_command": "..." },
   "models": { "loaded": true, "missing": [] },
-  "metrics": { "total": 120, "attacks": 47, "benign": 73, "latest": "ATTACK" },
-  "recent": [
-    { "Time": "12:01:05", "Status": "ATTACK", "Attack": "neptune",
-      "Attack Probability": 0.987, "Severity": "HIGH", "Response": "BLOCK_IP" }
-  ],
+  "simulated_addresses": true,
+  "last_id": 1042,
+  "epoch": 0,
+  "notifications_last_id": 88,
+  "metrics": { "total": 120, "attacks": 47, "benign": 73, "contained": 19, "latest": "ATTACK" },
+  "containment": { "enforcement": "simulated", "active": ["Action..."], "history": ["latest 50 Actions"], "flows_stopped": 19 },
+  "recent": [ "latest 50 Detections, oldest first" ],
   "charts": {
     "status":    [["BENIGN", 73], ["ATTACK", 47]],
     "severity":  [["NONE", 73], ["HIGH", 30], ["CRITICAL", 17]],
     "attacks":   [["neptune", 30], ["httptunnel", 17]],
     "responses": [["ALLOW", 73], ["BLOCK_IP", 30], ["ISOLATE_HOST", 17]]
-  },
-  "devices": [ { "ip": "192.168.1.20", "agent": "Mozilla/5.0 ...", "seconds_ago": 1 } ]
+  }
 }
 ```
 
-- `recent` is the latest 50 records, oldest first. `Attack Probability` is `null` when the binary model has no `predict_proba`.
-- Chart lists are sorted by count, highest first. `attacks` excludes `normal`.
-- `devices` is only present for the desktop.
-- `latest` is `"Waiting"` until the first flow is classified.
+Chart lists are sorted by count. `attacks` excludes `normal`. Metrics cover
+the session log (latest 500 detections).
+
+## Simulated containment
+
+LINDEF acts as if it contains attacks but never changes real traffic, in
+simulation and live mode alike. `enforcement` is always `"simulated"`.
+
+- An `ATTACK` whose response is `BLOCK_IP` or `THROTTLE_IP` starts an action against its **source** address; `ISOLATE_HOST` starts one against its **destination** (the affected host).
+- Durations: block 15 minutes, throttle 10 minutes, isolate 10 minutes. A repeat attack on an active target renews the timer and counts as another trigger instead of starting a new action.
+- Later flows are marked `Contained`: from a blocked or throttled source, or to an isolated host. Each action counts the flows it stopped.
+- The desktop can lift an action early. Clear Logs lifts all actions.
+- Without a target address (live capture with no IP columns), no action starts.
+
+```json
+{ "id": 12, "action": "BLOCK_IP", "target": "203.0.113.7", "target_kind": "source",
+  "attack": "neptune", "last_attack": "neptune", "severity": "HIGH", "detection_id": 1042,
+  "started": 1793019000, "expires": 1793019900, "triggers": 3, "flows_stopped": 11,
+  "active": true, "ended": null, "ended_at": null, "ended_by": null, "simulated": true }
+```
+
+Times are Unix seconds. `ended` is `expired`, `lifted`, or `cleared`.
+
+**Simulated addresses.** Simulation CSVs such as `simulation_test.csv` carry no
+addresses, so in simulation mode the agent assigns them after classification,
+only from reserved ranges: attacks come from 12 recurring attackers in the RFC
+5737 documentation ranges (203.0.113.0/24, 198.51.100.0/24); benign flows from
+thousands of clients in 198.18.0.0/15 (RFC 2544); both go to 24 defended hosts
+in 10.0.0.0/24. Addresses are keyed to the CSV row, so a row keeps its address
+when the file wraps around. State reports `simulated_addresses: true`.
+
+## Notifications
+
+The agent keeps a feed of the latest 200 notifications:
+
+| Kind | When | Title example |
+|---|---|---|
+| `containment` | an action starts or is lifted | `Blocked 203.0.113.7 (simulated)` |
+| `attack` | a `HIGH`, `CRITICAL`, or `UNKNOWN` attack with no containment action; at most once a minute per attack type | `Attack detected: guess_passwd` |
+| `error` | detection starts failing (once per new error, not every cycle) | `Detection stopped working` |
+
+```json
+{ "id": 88, "time": 1793019000, "kind": "containment", "severity": "HIGH",
+  "title": "Blocked 203.0.113.7 (simulated)", "body": "neptune attack, high severity. ...",
+  "action_id": 12, "detection_id": 1042 }
+```
+
+Each client filters by its own minimum severity (errors always pass):
+
+- **Desktop:** the desktop app polls the feed every 5 seconds and shows system
+  notifications (macOS Notification Center, `notify-send` on Linux; Windows shows
+  alerts in the window only). More than 3 at once become one summary.
+  Preferences are saved in `config.json`; the window also lists recent alerts.
+- **Phone:** while the app is open it checks every 2 seconds and posts local
+  notifications, shown as banners even in the foreground. In the background,
+  iOS background refresh checks now and then (system-scheduled, often 15 minutes
+  or more). Instant alerts on a locked phone need push through APNs (out of scope).
+
+## Desktop relay API (`/api`, loopback only)
+
+Every call needs `Authorization: Bearer LOCAL_TOKEN` (the token in the window's URL fragment).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | Window page |
+| GET | `/api/connection` | `{"paired", "host", "port", "device_id", "role", "name", "reachable", "health" or "error"}` |
+| POST | `/api/connection` | `{"code", "name"?}`: pair with an agent |
+| DELETE | `/api/connection` | Unpair (removes this desktop from the agent if reachable) |
+| GET, POST | `/api/preferences` | `{"system_notifications": bool, "notify_min_severity": "LOW"\|"MEDIUM"\|"HIGH"\|"CRITICAL"}` |
+| any | `/api/<path>` | Forwarded to the agent as `/v1/<path>` with this desktop's token |
+
+Relay errors: `503` not paired yet; `502` agent unreachable, certificate
+mismatch, or this desktop was unlinked (each with a message saying what to do).
+
+## iPhone app (`ios/`)
+
+SwiftUI, iOS 17+, iPhone. Open `ios/LINDEF.xcodeproj`, choose your team under
+Signing, and run. The app shows the same dashboard as the desktop (verdict,
+Start/Stop/Clear, metrics, containment, alerts, detections, distributions,
+monitoring sliders, log sharing, model details) in the paper design, with
+Light, Dark, or Match the phone in Settings. Phones cannot switch the traffic
+source, lift containment, or manage devices (see Roles).
+
+Pairing uses the `lindef://` URL scheme: scanning the desktop's QR code with the
+iPhone Camera app opens LINDEF, which always asks for confirmation (server and
+certificate shown) before pairing. Pasting the code also works. The pairing is
+kept in the Keychain (this device only).
+
+The steps below are the contract any phone client (for example, a future Android app) follows.
+
+1. Scan the QR code from the desktop (`POST /v1/pair` with role `phone`).
+2. Parse `lindef://HOST:PORT?pair=CODE&fp=FINGERPRINT`.
+3. Open HTTPS to `HOST:PORT` and accept the server certificate **only if** its
+   SHA-256 fingerprint (of the DER-encoded certificate) equals `FINGERPRINT`
+   (iOS: a `URLSession` delegate handling `serverTrust`; Android: an OkHttp
+   `CertificatePinner` or a custom `X509TrustManager`).
+4. `POST /v1/pair/claim {"code": CODE, "name": device name}` and store the token
+   and fingerprint in the Keychain (iOS) or Keystore (Android).
+5. Use `Authorization: Bearer TOKEN` on every call. On `401`, show "This phone
+   was unlinked. Scan a new code from the desktop."
+6. The agent must be reachable from the phone: same network, VPN, or a forwarded port.
 
 ## Detection loop
 
-- Runs on a daemon thread. Each cycle: if running, take one batch, classify it, append the records, save the session log to `attack_log.csv`, then wait `refresh_seconds`.
-- **Simulation:** takes `rows_per_step` rows from the CSV, starting where the last batch ended and wrapping to the start of the file. The CSV is re-read only when the file changes.
-- **Live:** captures `capture_duration` seconds with TShark, converts the capture with CICFlowMeter, and classifies every resulting flow. The CICFlowMeter CSV is deleted after it is read, so the same flows are never classified twice. Only the newest 20 pcaps are kept in `live_pcaps/`, so live mode cannot fill the disk. A capture with no flows counts as a quiet cycle, not an error.
-- The binary model scores the whole batch in one call. The attack classifier then runs once on all flagged flows together, rather than once per flow.
-- The session log keeps the latest 500 records.
-- Any error (missing CSV, TShark or CICFlowMeter failure, feature mismatch) is shown as `error` in the state, and the loop retries on the next cycle. A successful cycle clears the error.
-- Start, and any settings change, wake the loop immediately instead of waiting for the next cycle.
-- Clear Logs discards any batch that was already being processed, so cleared detections never reappear.
-- Settings and the log are guarded by one lock. Slow work (capture, conversion, classification) runs outside it, so the API stays responsive during a live capture.
+- Runs on a daemon thread. Each cycle: if running, take one batch, classify it, number and append the detections, save the log to `attack_log.csv`, then wait `refresh_seconds`.
+- **Simulation:** `rows_per_step` rows per cycle, continuing where the last batch ended, wrapping to the start. The CSV is re-read only when the file changes.
+- **Live:** capture `capture_duration` seconds with TShark, convert with CICFlowMeter, classify every flow. The CICFlowMeter CSV is deleted after reading, so flows are never classified twice. Only the newest 20 pcaps are kept. A capture with no flows is a quiet cycle, not an error.
+- The binary model scores the whole batch in one call; the attack classifier runs once on all flagged flows.
+- Errors appear as `error` in State; the loop retries next cycle and clears the error on success.
+- Start and settings changes wake the loop immediately. Clear Logs discards a batch already being processed.
+- One lock guards settings and the log; capture and classification run outside it, so the API stays responsive.
 
-## Frontend requirements
+## Out of scope / next steps
 
-The visual language follows the LINDEF poster (`docs/LINDEF_poster.pdf`): a clean white
-paper page, serif headings, thin ruled borders, research-table styling. No emojis.
-An optional dark mode is toggled from the header and remembered on that device.
+- **Real enforcement.** Containment is simulated. Applying it (firewall rules from `Source IP`) needs a separate, opt-in design.
+- **Push notifications to a locked phone.** Needs APNs/FCM through a relay service; until then the app alerts while open and on background refresh.
+- **Android app.**
+- **Several agents per desktop or phone.**
 
-**Both screens**
-- Header: product name, run status, theme toggle.
-- Start / Stop / Clear Logs.
-- Refresh speed and flows-per-refresh controls.
-- Metrics: Total Flows Checked, Detected Attacks, Benign Flows, Latest Status.
-- Error banner when `error` is set; models-missing notice listing the files.
-- Recent Detections table (latest 50, newest at top, probability to 4 decimals, severity marked by level).
-- Four distributions: Attack vs. Benign, Severity Distribution, Attack Types, Recommended Responses.
-- Download Detection Log (CSV).
-- Model and feature details panel, with an optional list of expected feature columns.
-
-**Desktop only**
-- Traffic source: mode switch; simulation CSV path; or TShark path, interface ID, capture duration, CICFlowMeter command.
-- Phone pairing panel: QR code, link, and connected devices.
-
-**Phone**
-- A single-column layout; the detections table becomes a stacked list.
-- Shows a clear "Not paired" screen if the token is missing or rejected.
-
-## Feature parity
-
-| Streamlit dashboard | Desktop app |
-|---|---|
-| Input mode radio (Simulation CSV / Live Capture) | Traffic source switch (desktop) |
-| Refresh speed slider 0.5–10 s | Same, desktop and phone |
-| Flows per refresh slider 1–100 | Same, desktop and phone |
-| Simulation CSV path | Same (desktop) |
-| TShark path, interface ID, capture duration | Same (desktop) |
-| CICFlowMeter command with `{input}`/`{output}` | Same (desktop) |
-| Start / Stop / Clear Logs | Same, desktop and phone |
-| Four status metrics | Same |
-| Error warning | Error banner |
-| Missing-model error | Missing-model notice; app still opens |
-| Recent Detections (last 50) | Same |
-| Four bar charts | Four distributions |
-| Download Detection Log | Same |
-| Model and feature details expander | Same |
-| `attack_log.csv` written on every update | Same |
-
-## Out of scope / future work
-
-- Push notifications to a locked phone (needs HTTPS or a relay such as ntfy).
-- HTTPS for the phone link.
-- A persistent token or multiple named phones.
-- Access from outside the local network.
