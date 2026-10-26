@@ -202,6 +202,7 @@ assert state["metrics"]["total"] >= 200 and not state["error"], (state["metrics"
 assert state["metrics"]["attacks"] + state["metrics"]["benign"] == state["metrics"]["total"]
 assert len(state["recent"]) == agent.RECENT_ROWS
 assert {r["Status"] for r in state["recent"]} <= {"ATTACK", "BENIGN"}
+assert state["recent_attacks"] and all(r["Status"] == "ATTACK" for r in state["recent_attacks"])
 assert set(state["charts"]) == {"status", "severity", "attacks", "responses"}
 row = state["recent"][-1]
 assert row["Source IP"].startswith("10.0.0.") and row["Source Port"] == "40000" and row["Destination Port"] == "443"

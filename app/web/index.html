@@ -356,7 +356,7 @@ dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: 
       <h3>Threats at Hand</h3>
       <div>
         <ol id="threatList"></ol>
-        <p class="muted small" id="threatEmpty" style="margin:2px 0 0">No attacks in the latest flows.</p>
+        <p class="muted small" id="threatEmpty" style="margin:2px 0 0">No attacks detected yet.</p>
       </div>
     </section>
 
@@ -729,7 +729,7 @@ function render() {
     document.createTextNode("Detection is off. The server is missing these model files: "),
     ...missing.flatMap((p, i) => [i ? document.createTextNode(", ") : null, el("code", { text: p.split("/").pop() })]).filter(Boolean));
 
-  renderThreats(s.recent);
+  renderThreats(s.recent_attacks || s.recent);
   renderContainment(box, isDesktop, s.simulated_addresses);
   renderDetections(s.recent);
   renderSettings(s.settings);

@@ -26,7 +26,7 @@ import socket
 import sys
 import threading
 import time
-from collections import Counter
+from collections import Counter, deque
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -207,6 +207,7 @@ class Monitor:
         self.running = False
         self.logs = []
         self.counts = self.empty_counts()  # running totals since the last Clear Logs
+        self.recent_attacks = deque(maxlen=10)  # for Threats at Hand; the flow log scrolls past attacks in seconds
         self.next_id = 1           # every detection gets an ID; IDs never repeat, even after Clear
         self.simulation_idx = 0
         self.epoch = 0             # bumped by clear() so a batch already in flight is dropped
@@ -318,6 +319,7 @@ class Monitor:
                 c["responses"][row["Response"]] += 1
                 if row["Status"] == "ATTACK":
                     c["attacks"][row["Attack"]] += 1
+                    self.recent_attacks.append(row)
                 if row["Contained"]:
                     c["contained"] += 1
 
@@ -375,6 +377,7 @@ class Monitor:
         with self.lock:
             self.logs = []
             self.counts = self.empty_counts()
+            self.recent_attacks.clear()
             self.simulation_idx = 0
             self.sim_rows_sent = 0
             self.epoch += 1
@@ -420,6 +423,7 @@ class Monitor:
         with self.lock:
             logs_df = pd.DataFrame(self.logs[-RECENT_ROWS:])
             c = {k: (v.copy() if isinstance(v, Counter) else v) for k, v in self.counts.items()}
+            recent_attacks = list(self.recent_attacks)
             last_id = self.next_id - 1
             epoch = self.epoch
             containment = self.containment.summary(time.time())
@@ -437,6 +441,7 @@ class Monitor:
             "metrics": {"total": 0, "attacks": 0, "benign": 0, "contained": 0, "latest": "Waiting"},
             "containment": containment,
             "recent": [],
+            "recent_attacks": recent_attacks,
             "charts": {"status": [], "severity": [], "attacks": [], "responses": []},
             "labels": {"attacks": engine.ATTACK_LABELS, "responses": engine.RESPONSE_LABELS},
         }

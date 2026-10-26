@@ -17,7 +17,7 @@ struct DashboardView: View {
                 if let state = model.state {
                     verdict(state)
                     controls(state)
-                    ThreatsAtHand(recent: state.recent)
+                    ThreatsAtHand(recent: state.recentAttacks ?? state.recent)
                     metrics(state.metrics)
                     banners(state)
                     containment(state)
@@ -334,7 +334,7 @@ struct ThreatsAtHand: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Threats at Hand").font(Paper.serif(17, .semibold))
             if threats.isEmpty {
-                Text("No attacks in the latest flows.").font(.footnote).foregroundStyle(Paper.ink3)
+                Text("No attacks detected yet.").font(.footnote).foregroundStyle(Paper.ink3)
             }
             ForEach(threats) { r in
                 let done = r.contained ?? ["BLOCK_IP": "BLOCKED", "THROTTLE_IP": "THROTTLED", "ISOLATE_HOST": "ISOLATED"][r.response]
