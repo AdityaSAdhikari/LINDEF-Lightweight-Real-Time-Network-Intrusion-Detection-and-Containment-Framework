@@ -416,7 +416,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Notifications")
                 } footer: {
-                    Text("While LINDEF is open, alerts arrive within seconds. In the background, iOS checks now and then, often every 15 minutes or more.")
+                    Text("LINDEF keeps one notification that updates in place, at most once a minute. Nothing pops up while the app is open. In the background, iOS checks now and then, often every 15 minutes or more.")
                 }
                 if let pairing = model.pairing {
                     Section {

@@ -149,6 +149,8 @@ assert desktop("/api/connection", {"code": desktop_code})[0] == 403  # codes wor
 popups = []
 server.show_system_notification = lambda title, body: popups.append(f"{title} {body}")
 server.NOTIFY_POLL_SECONDS = 0.2
+server.URGENT_SECONDS = 1.0  # short cooldowns so the test sees both the summary and the error
+server.QUIET_SECONDS = 1.0
 threading.Thread(target=server.watch_notifications, args=(link,), daemon=True).start()
 assert json.loads(desktop("/api/preferences")[1]) == server.DEFAULT_PREFERENCES
 assert desktop("/api/preferences", {"notify_min_severity": "LOUD"})[0] == 400
@@ -255,6 +257,7 @@ assert "not found" in json.loads(desktop("/api/state")[1])["error"]
 monitor.settings["simulation_csv"] = str(sim_csv)
 time.sleep(0.6)
 assert any("(simulated)" in t for t in popups) and any("Detection stopped working" in t for t in popups), popups
+assert len(popups) <= 8, popups  # hundreds of alerts became a handful of summaries
 
 # ----- devices --------------------------------------------------------------------
 

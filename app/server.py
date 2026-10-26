@@ -39,7 +39,8 @@ AGENT_PATH = re.compile(r"^[a-z0-9/._-]+$")
 SEVERITY_RANK = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "UNKNOWN": 3, "CRITICAL": 4}
 DEFAULT_PREFERENCES = {"system_notifications": True, "notify_min_severity": "HIGH"}
 NOTIFY_POLL_SECONDS = 5
-MAX_POPUPS_PER_POLL = 3  # beyond this, one summary notification instead of a flood
+QUIET_SECONDS = 60   # at most one desktop notification a minute...
+URGENT_SECONDS = 15  # ...except critical alerts and errors, which may come sooner
 
 
 def show_system_notification(title: str, body: str):
@@ -156,8 +157,11 @@ class AgentLink:
 
 
 def watch_notifications(link: AgentLink):
-    """Turn new agent notifications into desktop notifications, filtered by preference."""
+    """Turn new agent notifications into desktop notifications without spam: one
+    popup per cooldown, and anything that arrives in between is rolled into the
+    next one as a summary ("6 new alerts. Latest: ...")."""
     last_id, last_agent = None, None
+    pending, latest, last_shown = 0, None, 0.0
     while True:
         time.sleep(NOTIFY_POLL_SECONDS)
         if not link.agent:
@@ -178,17 +182,22 @@ def watch_notifications(link: AgentLink):
             if notes:
                 last_id = notes[-1]["id"]
             prefs = dict(link.preferences)
+            if not prefs["system_notifications"]:
+                pending = 0
+                continue
             minimum = SEVERITY_RANK[prefs["notify_min_severity"]]
             wanted = [n for n in notes
                       if n["kind"] == "error" or SEVERITY_RANK.get(n["severity"], 3) >= minimum]
-            if not prefs["system_notifications"] or not wanted:
-                continue
-            if len(wanted) > MAX_POPUPS_PER_POLL:
-                show_system_notification(f"LINDEF: {len(wanted)} new alerts",
-                                         "; ".join(n["title"] for n in wanted[:4]) + " ...")
+            pending += len(wanted)
+            latest = wanted[-1] if wanted else latest
+            urgent = any(n["kind"] == "error" or n["severity"] == "CRITICAL" for n in wanted)
+            if not pending or time.time() - last_shown < (URGENT_SECONDS if urgent else QUIET_SECONDS):
+                continue  # held back; counted into the next summary
+            if pending == 1:
+                show_system_notification(f"LINDEF: {latest['title']}", latest["body"])
             else:
-                for n in wanted:
-                    show_system_notification(f"LINDEF: {n['title']}", n["body"])
+                show_system_notification(f"LINDEF: {pending} new alerts", f"Latest: {latest['title']}")
+            pending, last_shown = 0, time.time()
         except (LinkError, ValueError, KeyError):
             continue  # agent offline or mid-restart: try again next poll
 

@@ -751,6 +751,7 @@ def main():
                         help="print a pairing code for this kind of device on start")
     parser.add_argument("--reset", action="store_true", help="new certificate and unpair every device")
     args = parser.parse_args()
+    sys.stdout.reconfigure(line_buffering=True)  # show pairing codes at once, even when output goes to a log file
 
     data_dir = secure.private_dir(args.data_dir)
     if args.reset:
@@ -799,4 +800,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit as exc:
+        # Opened by double-click (packaged program): keep the window up so the error can be read.
+        if getattr(sys, "frozen", False) and exc.code not in (None, 0):
+            print(exc.code)
+            input("Press Enter to close.")
+            raise SystemExit(1)
+        raise

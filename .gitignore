@@ -40,3 +40,7 @@ Thumbs.db
 xcuserdata/
 *.xcuserstate
 DerivedData/
+
+# Packaged LINDEF-Server builds
+build/
+dist/

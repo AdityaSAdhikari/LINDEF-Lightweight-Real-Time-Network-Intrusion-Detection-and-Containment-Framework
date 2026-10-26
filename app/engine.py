@@ -18,6 +18,7 @@ saved medians when available. If medians are unavailable, 0 is used.
 """
 
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -29,9 +30,13 @@ import pandas as pd
 # File paths
 # -----------------------------------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# From source, app/ sits next to models/, results/, and data/. As the packaged
+# LINDEF-Server program, those folders sit next to the program file itself.
+if getattr(sys, "frozen", False):
+    PROJECT_ROOT = Path(sys.executable).resolve().parent
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# These paths assume the app/ folder is next to models/, results/, and data/.
 MODEL_DIR = PROJECT_ROOT / "models"
 LIVE_PCAP_DIR = PROJECT_ROOT / "live_pcaps"
 LIVE_CSV_DIR = PROJECT_ROOT / "live_csvs"

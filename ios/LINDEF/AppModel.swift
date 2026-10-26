@@ -55,6 +55,7 @@ final class AppModel {
     // MARK: Polling
 
     func startPolling() {
+        Alerts.clearSummary()  // the alerts list is on screen now
         guard client != nil, polling == nil else { return }
         polling = Task { [weak self] in
             var first = true
@@ -97,7 +98,7 @@ final class AppModel {
         notes = feed.notifications.reversed()
         if feed.lastId < Alerts.lastSeenId { Alerts.lastSeenId = 0 }  // the agent restarted
         let fresh = feed.notifications.filter { $0.id > Alerts.lastSeenId }
-        if announce || Alerts.lastSeenId > 0 { Alerts.post(fresh) }
+        _ = fresh  // the open app lists them; no notification while it is on screen
         Alerts.lastSeenId = feed.lastId
     }
 
@@ -130,10 +131,22 @@ final class AppModel {
 
 // MARK: - Notifications
 
-/// Local notifications for new alerts at or above the chosen severity.
+/// Alerts as notifications, without spam. Rules:
+/// - Nothing is shown while the app is open (the alerts list is on screen).
+/// - There is only ever one LINDEF notification. Each new one replaces it in
+///   place ("6 new alerts. Latest: ..."), so they never pile up.
+/// - At most one a minute; critical alerts and errors may come after 15 seconds.
+///   Alerts that arrive in between are counted into the next summary.
 enum Alerts {
     static let severityKey = "alertsMinSeverity"
     private static let lastSeenKey = "alertsLastSeenId"
+    private static let lastShownKey = "alertsLastShown"
+    private static let pendingKey = "alertsPending"
+    private static let latestTitleKey = "alertsLatestTitle"
+    private static let latestBodyKey = "alertsLatestBody"
+    private static let summaryId = "lindef-alerts"
+    static let quietSeconds: TimeInterval = 60
+    static let urgentSeconds: TimeInterval = 15
     private static let rank = ["NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "UNKNOWN": 3, "CRITICAL": 4]
 
     static var lastSeenId: Int {
@@ -145,38 +158,54 @@ enum Alerts {
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
     }
 
+    /// Count new alerts and show one summary if the cooldown allows. Call with
+    /// an empty list to flush alerts held back by an earlier cooldown.
     static func post(_ notes: [Note]) {
-        let minimum = rank[UserDefaults.standard.string(forKey: severityKey) ?? "HIGH"] ?? 3
+        let defaults = UserDefaults.standard
+        let minimum = rank[defaults.string(forKey: severityKey) ?? "HIGH"] ?? 3
         let wanted = notes.filter { $0.kind == "error" || (rank[$0.severity] ?? 3) >= minimum }
-        guard !wanted.isEmpty else { return }
-        let content = UNMutableNotificationContent()
-        if wanted.count > 3 {
-            content.title = "LINDEF: \(wanted.count) new alerts"
-            content.body = wanted.prefix(3).map(\.title).joined(separator: "\n")
-        } else {
-            for note in wanted.dropLast() { deliver(note.title, note.body) }
-            content.title = wanted.last!.title
-            content.body = wanted.last!.body
+        let pending = defaults.integer(forKey: pendingKey) + wanted.count
+        defaults.set(pending, forKey: pendingKey)
+        if let latest = wanted.last {
+            defaults.set(latest.title, forKey: latestTitleKey)
+            defaults.set(latest.body, forKey: latestBodyKey)
         }
-        content.sound = .default
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        guard pending > 0 else { return }
+
+        let urgent = wanted.contains { $0.kind == "error" || $0.severity == "CRITICAL" }
+        let since = Date().timeIntervalSince1970 - defaults.double(forKey: lastShownKey)
+        guard since >= (urgent ? urgentSeconds : quietSeconds) else { return }  // counted into the next summary
+
+        let title = defaults.string(forKey: latestTitleKey) ?? "New alerts"
+        let content = UNMutableNotificationContent()
+        if pending == 1 {
+            content.title = title
+            content.body = defaults.string(forKey: latestBodyKey) ?? ""
+        } else {
+            content.title = "LINDEF: \(pending) new alerts"
+            content.body = "Latest: \(title). Open LINDEF for the full list."
+        }
+        content.threadIdentifier = summaryId
+        content.sound = since >= 10 * 60 || urgent ? .default : nil  // silent when it updates a recent one
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: summaryId, content: content, trigger: nil))
+        defaults.set(Date().timeIntervalSince1970, forKey: lastShownKey)
+        defaults.set(0, forKey: pendingKey)
     }
 
-    private static func deliver(_ title: String, _ body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    /// Opening the app shows every alert, so the summary has done its job.
+    static func clearSummary() {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [summaryId])
+        UserDefaults.standard.set(0, forKey: pendingKey)
     }
 }
 
-/// Shows alerts as banners even while the app is open.
+/// Keeps a summary that lands while the app is open out of the way (list only, no banner).
 final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationPresenter()
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .sound, .list])
+        completionHandler([.list])
     }
 }
 
