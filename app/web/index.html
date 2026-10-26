@@ -155,7 +155,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- sections ---------- */
 .columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 28px; margin-top: 28px; }
-.stack { display: grid; gap: 28px; align-content: start; }
+.stack { display: grid; gap: 28px; align-content: start; min-width: 0; }  /* min-width: let wide tables scroll inside instead of overlapping */
+.section { min-width: 0; }
 .section { border: 1px solid var(--rule); background: var(--paper); }
 .section > header {
   display: flex; align-items: baseline; gap: 12px;
@@ -280,7 +281,7 @@ dialog .code { font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; te
 dialog footer { padding: 12px 18px; border-top: 1px solid var(--rule); display: flex; justify-content: flex-end; gap: 8px; }
 
 /* ---------- narrow screens ---------- */
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .columns { grid-template-columns: 1fr; }
   .dists { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dist:nth-child(3) { border-left: 0; }
