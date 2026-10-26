@@ -79,12 +79,12 @@ NOTIFY_SEVERITIES = {"HIGH", "CRITICAL", "UNKNOWN"}  # uncontained attacks worth
 # mode the agent assigns them after classification, from reserved ranges only:
 # attacks come from the RFC 5737 documentation ranges, benign traffic from
 # thousands of clients (198.18.0.0/15, RFC 2544), and both go to defended hosts
-# in 10.0.0.0/24. Neighbouring rows share an attacker (a burst comes from one or
+# in 10.0.0.0/23. Neighbouring rows share an attacker (a burst comes from one or
 # two sources), and every pass through the CSV brings new attackers, so blocks
 # expire and new ones start the way they would on a real network.
 SIM_ATTACKERS = [f"203.0.113.{n}" for n in range(1, 255)] + [f"198.51.100.{n}" for n in range(1, 255)]
 SIM_ATTACKER_ROWS = 50  # rows in a row that share one attacker
-SIM_HOSTS = [f"10.0.0.{n}" for n in range(5, 125, 5)]
+SIM_HOSTS = [f"10.0.{n // 254}.{n % 254 + 1}" for n in range(400)]  # isolating one host cuts off a sliver of traffic
 SIM_PORTS = [443, 80, 22, 21, 25, 3389, 445, 3306]
 
 
