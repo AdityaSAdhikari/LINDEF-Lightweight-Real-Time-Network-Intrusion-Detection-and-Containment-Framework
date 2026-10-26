@@ -281,7 +281,6 @@ assert monitor.logs == []
 
 # ----- live mode with stand-in TShark and CICFlowMeter ------------------------------
 
-agent.MAX_LOGS = 10_000  # three captures of 200 flows would overflow the normal 500 cap
 fake_tshark = tmp / "tshark"
 fake_tshark.write_text(f"#!{sys.executable}\n"
                        "import sys; open(sys.argv[sys.argv.index('-w') + 1], 'wb').write(b'pcap')\n")

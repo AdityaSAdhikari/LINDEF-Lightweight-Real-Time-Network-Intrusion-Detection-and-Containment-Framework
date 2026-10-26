@@ -257,7 +257,7 @@ struct DashboardView: View {
     }
 
     private func distributions(_ c: AgentState.Charts) -> some View {
-        PaperSection(title: "Distributions", aside: "Latest 500 flows", tint: Paper.lavender) {
+        PaperSection(title: "Distributions", aside: "Since last clear", tint: Paper.lavender) {
             VStack(alignment: .leading, spacing: 14) {
                 bars("Attack and benign", c.status) { $0 == "ATTACK" ? Paper.severity("HIGH") : Paper.severity("NONE") }
                     label: { $0 == "ATTACK" ? "Attack" : "Benign" }

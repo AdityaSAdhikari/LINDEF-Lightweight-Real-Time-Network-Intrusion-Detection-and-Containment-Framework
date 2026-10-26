@@ -19,12 +19,14 @@ Full API contract: docs/desktop_app_spec.md.
 """
 
 import argparse
+import csv
 import json
 import secrets
 import socket
 import sys
 import threading
 import time
+from collections import Counter
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -39,7 +41,7 @@ VERSION = "2.0"
 DEFAULT_PORT = 9443
 DEFAULT_DATA_DIR = "~/.lindef/agent"
 
-MAX_LOGS = 500              # session log cap, same as the original dashboard
+MAX_LOGS = 500              # detections kept in memory; counts and attack_log.csv keep everything
 RECENT_ROWS = 50            # rows in the Recent Detections table
 PAIR_CODE_SECONDS = 600     # pairing codes are single use and expire after 10 minutes
 ONLINE_SECONDS = 30         # a device counts as online this long after its last request
@@ -82,11 +84,6 @@ NOTIFY_SEVERITIES = {"HIGH", "CRITICAL", "UNKNOWN"}  # uncontained attacks worth
 SIM_ATTACKERS = [f"203.0.113.{n}" for n in (7, 19, 23, 42, 58, 77, 91)] + [f"198.51.100.{n}" for n in (4, 13, 66, 120, 201)]
 SIM_HOSTS = [f"10.0.0.{n}" for n in range(5, 125, 5)]
 SIM_PORTS = [443, 80, 22, 21, 25, 3389, 445, 3306]
-
-
-def value_counts(series: pd.Series) -> list:
-    """Return [[label, count], ...] sorted by count, ready for JSON."""
-    return [[str(k), int(v)] for k, v in series.value_counts().items()]
 
 
 def has_address_columns(df: pd.DataFrame) -> bool:
@@ -205,6 +202,7 @@ class Monitor:
         self.wake = threading.Event()
         self.running = False
         self.logs = []
+        self.counts = self.empty_counts()  # running totals since the last Clear Logs
         self.next_id = 1           # every detection gets an ID; IDs never repeat, even after Clear
         self.simulation_idx = 0
         self.epoch = 0             # bumped by clear() so a batch already in flight is dropped
@@ -307,6 +305,15 @@ class Monitor:
             self.next_id += len(rows)
             started = self.containment.apply(rows, now)
             self.logs = (self.logs + rows)[-MAX_LOGS:]
+            for row in rows:
+                c = self.counts
+                c["status"][row["Status"]] += 1
+                c["severity"][row["Severity"]] += 1
+                c["responses"][row["Response"]] += 1
+                if row["Status"] == "ATTACK":
+                    c["attacks"][row["Attack"]] += 1
+                if row["Contained"]:
+                    c["contained"] += 1
 
             for a in started:
                 lasts = (f"Lasts {CONTAINMENT_SECONDS[a['action']] // 60} minutes unless repeated."
@@ -325,8 +332,17 @@ class Monitor:
                     self.notify("attack", row["Severity"], f"Attack detected: {row['Attack']}",
                                 f"{row['Severity'].capitalize()} severity{route}. "
                                 f"Recommended response: {row['Response']}.", detection_id=row["ID"])
-            logs = list(self.logs)
-        pd.DataFrame(logs).to_csv(engine.LOG_FILE, index=False)
+        new_file = not engine.LOG_FILE.exists()
+        with open(engine.LOG_FILE, "a", newline="") as f:  # grows for the whole session
+            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+            if new_file:
+                writer.writeheader()
+            writer.writerows(rows)
+
+    @staticmethod
+    def empty_counts() -> dict:
+        return {"status": Counter(), "severity": Counter(), "attacks": Counter(),
+                "responses": Counter(), "contained": 0}
 
     def notify(self, kind: str, severity: str, title: str, body: str, action_id=None, detection_id=None):
         """Add to the notification feed. Call while holding self.lock."""
@@ -352,6 +368,7 @@ class Monitor:
         """Empty the detection log and lift all simulated containment (a fresh start)."""
         with self.lock:
             self.logs = []
+            self.counts = self.empty_counts()
             self.simulation_idx = 0
             self.epoch += 1
             self.containment.lift_all(by, time.time())
@@ -394,7 +411,8 @@ class Monitor:
     def state(self) -> dict:
         """Everything a dashboard needs for one refresh."""
         with self.lock:
-            logs_df = pd.DataFrame(self.logs)
+            logs_df = pd.DataFrame(self.logs[-RECENT_ROWS:])
+            c = {k: (v.copy() if isinstance(v, Counter) else v) for k, v in self.counts.items()}
             last_id = self.next_id - 1
             epoch = self.epoch
             containment = self.containment.summary(time.time())
@@ -418,20 +436,16 @@ class Monitor:
             return state
 
         state["metrics"] = {
-            "total": len(logs_df),
-            "attacks": int((logs_df["Status"] == "ATTACK").sum()),
-            "benign": int((logs_df["Status"] == "BENIGN").sum()),
-            "contained": int(logs_df["Contained"].notna().sum()),
+            "total": sum(c["status"].values()),
+            "attacks": c["status"]["ATTACK"],
+            "benign": c["status"]["BENIGN"],
+            "contained": c["contained"],
             "latest": logs_df.iloc[-1]["Status"],
         }
-        recent = logs_df.tail(RECENT_ROWS).astype(object)
+        recent = logs_df.astype(object)
         state["recent"] = recent.where(recent.notna(), None).to_dict("records")
-        state["charts"] = {
-            "status": value_counts(logs_df["Status"]),
-            "severity": value_counts(logs_df["Severity"]),
-            "attacks": value_counts(logs_df.loc[logs_df["Attack"] != "normal", "Attack"]),
-            "responses": value_counts(logs_df["Response"]),
-        }
+        state["charts"] = {key: [[k, v] for k, v in c[key].most_common()]
+                           for key in ("status", "severity", "attacks", "responses")}
         return state
 
     def detections(self, after: int, limit: int) -> dict:
@@ -467,8 +481,9 @@ class Monitor:
         return info
 
     def log_csv(self) -> str:
+        """The whole session's detections (attack_log.csv)."""
         with self.lock:
-            return pd.DataFrame(self.logs).to_csv(index=False)
+            return engine.LOG_FILE.read_text() if engine.LOG_FILE.exists() else ""
 
 
 # -----------------------------------------------------------------------------
